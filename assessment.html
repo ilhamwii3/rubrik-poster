@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Penilaian — PAMERIN</title>
+<link rel="stylesheet" href="../css/global.css">
+<link rel="stylesheet" href="../css/components.css">
+</head>
+<body data-root="../">
+<div id="header"></div>
+<main class="main">
+<div class="container-narrow" id="content"><div class="empty">Memuat...</div></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/config.js"></script>
+<script src="../js/supabase.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+const RUBRIK = [
+  ['Kesesuaian tema', 'Poster sesuai tema: belajar dari pahlawan.'],
+  ['Ketepatan informasi', 'Foto, deskripsi, biografi, peran, sumbangsih benar.'],
+  ['Kreativitas, desain dan tata letak', 'Visual menarik, komposisi seimbang, mudah dibaca.'],
+  ['Kerapian', 'Bersih, rapi, pigura dan hasil cetak baik.']
+];
+let scores = [0,0,0,0], curPoster = null, curAuth = null, existing = null;
+
+function draw() {
+  const total = scores.reduce((a,b)=>a+b,0);
+  const nilai = (total/20*100).toFixed(0);
+  const html = RUBRIK.map((r,i) => `
+    <div class="crit-block">
+      <p class="crit-title">${i+1}. ${r[0]} <span class="text-muted">(maks 5)</span></p>
+      <p class="crit-desc">${r[1]}</p>
+      <div class="score-group">
+        ${[1,2,3,4,5].map(n => `<button class="score-btn ${scores[i]===n?'on':''}" onclick="setScore(${i},${n})">${n}</button>`).join('')}
+      </div>
+    </div>`).join('');
+  document.getElementById('crits').innerHTML = html;
+  document.getElementById('total').textContent = total;
+  document.getElementById('nilai').textContent = nilai;
+}
+
+window.setScore = (i, n) => { scores[i] = n; draw(); };
+
+window.simpan = async () => {
+  if (scores.includes(0)) { toast('Semua aspek harus dinilai (1–5).', 'error'); return; }
+  const kritik = document.getElementById('kritik').value.trim();
+  const payload = {
+    poster_id: curPoster.id,
+    judge_id: curAuth.session.user.id,
+    s1: scores[0], s2: scores[1], s3: scores[2], s4: scores[3],
+    kritik_saran: kritik || null
+  };
+  const { error } = await sb.from('assessments').upsert(payload, { onConflict: 'poster_id,judge_id' });
+  if (error) { toast('Gagal menyimpan: ' + error.message, 'error'); return; }
+  toast('Penilaian tersimpan.', 'success');
+  setTimeout(() => location.href = 'dashboard.html', 800);
+};
+
+(async () => {
+  curAuth = await requireAuth();
+  if (!curAuth) return;
+  const kode = new URLSearchParams(location.search).get('kode');
+  if (!kode) { document.getElementById('content').innerHTML = '<div class="empty">Kode poster tidak ada.</div>'; return; }
+  const { data: p, error } = await sb.from('posters').select('*, participants(nama,kelas)').eq('kode', kode).single();
+  if (error || !p) { document.getElementById('content').innerHTML = '<div class="empty">Poster tidak ditemukan.</div>'; return; }
+  curPoster = p;
+
+  const { data: ex } = await sb.from('assessments').select('*').eq('poster_id', p.id).eq('judge_id', curAuth.session.user.id).maybeSingle();
+  existing = ex;
+  if (ex) scores = [ex.s1, ex.s2, ex.s3, ex.s4];
+
+  document.getElementById('content').innerHTML = `
+    <a href="dashboard.html" class="btn btn-ghost btn-sm mb-2">← Kembali</a>
+    <div class="card mb-2">
+      <span class="badge badge-accent">${esc(p.kode)}</span>
+      <h2 style="margin:8px 0 4px">${esc(p.judul)}</h2>
+      <p class="text-muted" style="margin:0">${esc(p.participants?.nama||'—')} · ${esc(p.participants?.kelas||'')}</p>
+      ${existing ? '<div class="alert alert-info mt-2">Anda sudah pernah menilai poster ini. Simpan ulang akan memperbarui nilai.</div>' : ''}
+      <img src="${esc(p.image_url||'')}" style="border-radius:var(--radius);margin-top:12px;width:100%">
+      ${p.deskripsi ? `<p class="mt-2">${esc(p.deskripsi)}</p>` : ''}
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Rubrik Penilaian</h3>
+      <div id="crits"></div>
+      <label for="kritik">Kritik &amp; saran (opsional)</label>
+      <textarea id="kritik" placeholder="Catatan untuk siswa...">${esc(existing?.kritik_saran||'')}</textarea>
+      <div class="total-display">
+        <div><div class="sub">Skor</div><div class="big"><span id="total">0</span><span class="sub" style="font-size:1rem">/20</span></div></div>
+        <div style="margin-left:auto;text-align:right"><div class="sub">Nilai</div><div class="big" style="color:var(--accent)"><span id="nilai">0</span></div></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="simpan()">Simpan Penilaian</button>
+    </div>`;
+  draw();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard Admin — PAMERIN</title>
+<link rel="stylesheet" href="../css/global.css">
+<link rel="stylesheet" href="../css/components.css">
+</head>
+<body data-root="../">
+<div id="header"></div>
+<main class="main">
+<div class="container">
+  <div class="flex-between mb-2">
+    <div><h1 style="margin:0">Dashboard Admin</h1><p class="text-muted" id="hello"></p></div>
+    <div class="flex gap-1">
+      <a href="posters.html" class="btn btn-primary">+ Kelola Poster</a>
+      <a href="reports.html" class="btn btn-outline">Laporan</a>
+    </div>
+  </div>
+  <div class="stats-grid" id="stats"></div>
+  <div class="card mt-3">
+    <h3 style="margin-top:0">Poster Terbaru</h3>
+    <div id="recent" class="mt-2"><div class="empty">Memuat...</div></div>
+  </div>
+</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/config.js"></script>
+<script src="../js/supabase.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+(async () => {
+  const auth = await requireAuth(['admin']);
+  if (!auth) return;
+  document.getElementById('hello').textContent = `Halo, ${auth.profile.full_name}.`;
+
+  const [{ count: pCount }, { count: rCount }, { data: profiles }, { data: assess }] = await Promise.all([
+    sb.from('posters').select('*', { count: 'exact', head: true }),
+    sb.from('participants').select('*', { count: 'exact', head: true }),
+    sb.from('profiles').select('id,role,active'),
+    sb.from('assessments').select('nilai')
+  ]);
+  const judgeCount = (profiles||[]).filter(p => p.role === 'judge' && p.active).length;
+  const avg = assess?.length ? (assess.reduce((s,a)=>s+Number(a.nilai),0)/assess.length).toFixed(1) : '—';
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-card"><div class="num">${pCount||0}</div><div class="lbl">Total poster</div></div>
+    <div class="stat-card"><div class="num">${rCount||0}</div><div class="lbl">Peserta</div></div>
+    <div class="stat-card"><div class="num">${judgeCount}</div><div class="lbl">Penilai aktif</div></div>
+    <div class="stat-card"><div class="num">${assess?.length||0}</div><div class="lbl">Total penilaian</div></div>
+    <div class="stat-card"><div class="num">${avg}</div><div class="lbl">Rata-rata</div></div>`;
+
+  const { data: recent } = await sb.from('posters').select('kode,judul,image_url,created_at,participants(nama,kelas)').order('created_at',{ascending:false}).limit(6);
+  const rec = document.getElementById('recent');
+  if (!recent?.length) { rec.innerHTML = '<div class="empty">Belum ada poster. <a href="posters.html">Upload sekarang</a>.</div>'; return; }
+  rec.innerHTML = '<div class="poster-grid">' + recent.map(p => `
+    <a href="../detail.html?kode=${encodeURIComponent(p.kode)}" class="poster-card">
+      <span class="kode-badge">${esc(p.kode)}</span>
+      <img src="${esc(p.image_url||'')}" loading="lazy">
+      <div class="meta"><h4>${esc(p.judul)}</h4><small>${esc(p.participants?.nama||'—')} · ${esc(p.participants?.kelas||'')}</small></div>
+    </a>`).join('') + '</div>';
+})();
+</script>
+</body>
+</html>
