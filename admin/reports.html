@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Laporan — PAMERIN</title>
+<link rel="stylesheet" href="../css/global.css">
+<link rel="stylesheet" href="../css/components.css">
+</head>
+<body data-root="../">
+<div id="header"></div>
+<main class="main">
+<div class="container">
+  <div class="flex-between mb-2">
+    <h1 style="margin:0">Rekap Penilaian</h1>
+    <div class="flex gap-1 noprint">
+      <button class="btn btn-outline" onclick="exportCsv()">Unduh CSV</button>
+      <button class="btn btn-outline" onclick="window.print()">Cetak / PDF</button>
+    </div>
+  </div>
+
+  <div class="card mb-2 noprint">
+    <label style="display:flex;align-items:center;gap:8px;margin:0;cursor:pointer">
+      <input type="checkbox" id="publishToggle" style="width:auto;margin:0" onchange="togglePublish()">
+      <span>Publikasikan ranking ke halaman publik</span>
+    </label>
+    <p class="text-muted mt-1" style="font-size:.85rem;margin:0">Kalau dicentang, pengunjung bisa melihat peringkat di halaman Ranking.</p>
+  </div>
+
+  <h2>Ringkasan per Poster</h2>
+  <div class="table-scroll mt-1" id="summary"><div class="empty">Memuat...</div></div>
+
+  <h2 class="mt-3">Rincian Semua Penilaian</h2>
+  <div class="table-scroll mt-1" id="detail"><div class="empty">Memuat...</div></div>
+</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/config.js"></script>
+<script src="../js/supabase.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+let summaryData = [], detailData = [];
+
+window.togglePublish = async () => {
+  const val = document.getElementById('publishToggle').checked;
+  const { error } = await sb.from('event_settings').update({ ranking_published: val, updated_at: new Date().toISOString() }).eq('id', 1);
+  if (error) { toast(error.message, 'error'); return; }
+  toast(val ? 'Ranking dipublikasikan.' : 'Ranking disembunyikan.', 'success');
+};
+
+window.exportCsv = () => {
+  const rows = [
+    ['Kode','Judul','Siswa','Kelas','Penilai','S1','S2','S3','S4','Skor','Nilai','Tanggal'],
+    ...detailData.map(d => [d.posters?.kode, d.posters?.judul, d.posters?.participants?.nama, d.posters?.participants?.kelas, d.profiles?.full_name, d.s1, d.s2, d.s3, d.s4, d.skor, d.nilai, new Date(d.created_at).toLocaleString('id-ID')])
+  ];
+  const csv = rows.map(r => r.map(c => '"' + String(c ?? '').replace(/"/g, '""') + '"').join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'rekap-rubrik-poster.csv'; a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+(async () => {
+  await requireAuth(['admin']);
+
+  const { data: settings } = await sb.from('event_settings').select('ranking_published').eq('id',1).single();
+  document.getElementById('publishToggle').checked = !!settings?.ranking_published;
+
+  const { data: posters } = await sb.from('posters').select('id,kode,judul,participants(nama,kelas)').eq('status','published').order('kode');
+  const { data: assess } = await sb.from('assessments').select('*, profiles(full_name), posters(kode,judul,participants(nama,kelas))');
+  detailData = assess || [];
+
+  const by = {};
+  detailData.forEach(a => { (by[a.poster_id] = by[a.poster_id] || []).push(a); });
+  summaryData = (posters || []).map(p => {
+    const list = by[p.id] || [];
+    const avg = list.length ? list.reduce((s,a)=>s+Number(a.nilai),0)/list.length : null;
+    return { ...p, count: list.length, avg };
+  }).sort((a,b) => (b.avg ?? -1) - (a.avg ?? -1));
+
+  document.getElementById('summary').innerHTML = summaryData.length
+    ? `<table class="rank-table"><thead><tr><th>#</th><th>Kode</th><th>Judul</th><th>Siswa</th><th>Kelas</th><th>Responden</th><th>Rata-rata</th></tr></thead><tbody>
+       ${summaryData.map((s,i) => `<tr><td>${i+1}</td><td>${esc(s.kode)}</td><td><b>${esc(s.judul)}</b></td><td>${esc(s.participants?.nama||'—')}</td><td>${esc(s.participants?.kelas||'')}</td><td>${s.count}</td><td><b>${s.avg===null?'—':s.avg.toFixed(1)}</b></td></tr>`).join('')}
+       </tbody></table>`
+    : '<div class="empty">Belum ada poster.</div>';
+
+  document.getElementById('detail').innerHTML = detailData.length
+    ? `<table class="rank-table"><thead><tr><th>Kode</th><th>Judul</th><th>Penilai</th><th>Skor</th><th>Nilai</th><th>Tanggal</th><th>Kritik/Saran</th></tr></thead><tbody>
+       ${detailData.map(d => `<tr><td>${esc(d.posters?.kode)}</td><td>${esc(d.posters?.judul)}</td><td>${esc(d.profiles?.full_name||'—')}</td><td>${d.skor}</td><td><b>${Number(d.nilai).toFixed(0)}</b></td><td>${new Date(d.created_at).toLocaleDateString('id-ID')}</td><td style="max-width:240px;white-space:normal">${esc(d.kritik_saran||'—')}</td></tr>`).join('')}
+       </tbody></table>`
+    : '<div class="empty">Belum ada penilaian.</div>';
+})();
+</script>
+</body>
+</html>

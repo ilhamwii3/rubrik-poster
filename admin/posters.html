@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Manajemen Poster — PAMERIN</title>
+<link rel="stylesheet" href="../css/global.css">
+<link rel="stylesheet" href="../css/components.css">
+</head>
+<body data-root="../">
+<div id="header"></div>
+<main class="main">
+<div class="container">
+  <div class="flex-between mb-2">
+    <h1 style="margin:0">Manajemen Poster</h1>
+    <div class="flex gap-1">
+      <button class="btn btn-outline" onclick="window.print()">🖨️ Cetak Label QR</button>
+      <button class="btn btn-primary" onclick="toggleForm()">+ Tambah Poster</button>
+    </div>
+  </div>
+
+  <div class="card mb-2 hidden" id="formCard">
+    <h3 style="margin-top:0">Tambah / Edit Poster</h3>
+    <input type="hidden" id="editId">
+    <div class="flex gap-2" style="flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <label>Nama siswa / kelompok</label>
+        <input id="nama" required>
+      </div>
+      <div style="flex:1;min-width:220px">
+        <label>Kelas</label>
+        <input id="kelas" placeholder="X APHP 1">
+      </div>
+    </div>
+    <label>Judul poster</label>
+    <input id="judul" required>
+    <label>Deskripsi</label>
+    <textarea id="deskripsi" rows="2"></textarea>
+    <label>Tujuan pembuatan</label>
+    <textarea id="tujuan" rows="2"></textarea>
+    <label>Informasi / isi poster</label>
+    <textarea id="informasi" rows="2"></textarea>
+    <label>Sumber referensi</label>
+    <input id="sumber" placeholder="Buku, situs, dsb.">
+    <label>Foto poster (JPG/PNG, otomatis dikompres)</label>
+    <input id="file" type="file" accept="image/*">
+    <img id="preview" style="max-width:200px;margin-top:8px;border-radius:6px;display:none">
+    <div class="flex gap-1 mt-2">
+      <button class="btn btn-primary" id="saveBtn" onclick="simpanPoster()">Simpan</button>
+      <button class="btn btn-outline" onclick="toggleForm()">Batal</button>
+    </div>
+    <div id="formMsg" class="mt-1"></div>
+  </div>
+
+  <div id="list"><div class="empty">Memuat...</div></div>
+</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/supabase.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+let auth = null, fileBlob = null, editing = null, allPosters = [];
+
+window.toggleForm = () => {
+  const c = document.getElementById('formCard');
+  c.classList.toggle('hidden');
+  if (c.classList.contains('hidden')) resetForm();
+};
+const resetForm = () => {
+  editing = null; fileBlob = null;
+  ['editId','nama','kelas','judul','deskripsi','tujuan','informasi','sumber'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('file').value = '';
+  document.getElementById('preview').style.display = 'none';
+  document.getElementById('formMsg').textContent = '';
+};
+
+document.getElementById('file').onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  if (f.size > 10 * 1024 * 1024) { toast('Maksimal 10 MB.', 'error'); e.target.value = ''; return; }
+  const blob = await compressImage(f);
+  fileBlob = blob;
+  document.getElementById('preview').src = URL.createObjectURL(blob);
+  document.getElementById('preview').style.display = 'block';
+};
+
+window.simpanPoster = async () => {
+  const nama = document.getElementById('nama').value.trim();
+  const kelas = document.getElementById('kelas').value.trim();
+  const judul = document.getElementById('judul').value.trim();
+  if (!nama || !judul) { toast('Nama dan judul wajib diisi.', 'error'); return; }
+  if (!editing && !fileBlob) { toast('Pilih foto poster dulu.', 'error'); return; }
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true; btn.textContent = 'Menyimpan...';
+
+  try {
+    let participantId = editing?.participant_id;
+    if (editing) {
+      await sb.from('participants').update({ nama, kelas }).eq('id', participantId);
+    } else {
+      const { data: part, error: pErr } = await sb.from('participants').insert({ nama, kelas }).select().single();
+      if (pErr) throw pErr;
+      participantId = part.id;
+    }
+
+    let imageUrl = editing?.image_url || null;
+    let storagePath = editing?.storage_path || null;
+    if (fileBlob) {
+      const path = `poster-${Date.now()}-${Math.random().toString(36).slice(2,8)}.jpg`;
+      const { error: upErr } = await sb.storage.from('posters').upload(path, fileBlob, { contentType: 'image/jpeg', upsert: false });
+      if (upErr) throw upErr;
+      const { data: pub } = sb.storage.from('posters').getPublicUrl(path);
+      imageUrl = pub.publicUrl; storagePath = path;
+    }
+
+    const payload = {
+      participant_id: participantId,
+      judul,
+      deskripsi: document.getElementById('deskripsi').value.trim() || null,
+      tujuan: document.getElementById('tujuan').value.trim() || null,
+      informasi: document.getElementById('informasi').value.trim() || null,
+      sumber: document.getElementById('sumber').value.trim() || null,
+      image_url: imageUrl, storage_path: storagePath,
+      created_by: auth.session.user.id,
+      updated_at: new Date().toISOString()
+    };
+
+    if (editing) {
+      const { error } = await sb.from('posters').update(payload).eq('id', editing.id);
+      if (error) throw error;
+      toast('Poster diperbarui.', 'success');
+    } else {
+      const { data, error } = await sb.from('posters').insert(payload).select().single();
+      if (error) throw error;
+      toast(`Poster dibuat dengan kode ${data.kode}.`, 'success');
+    }
+    resetForm();
+    document.getElementById('formCard').classList.add('hidden');
+    loadPosters();
+  } catch (e) {
+    toast('Gagal: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Simpan';
+  }
+};
+
+window.editPoster = (id) => {
+  const p = allPosters.find(x => x.id === id); if (!p) return;
+  editing = p;
+  document.getElementById('editId').value = p.id;
+  document.getElementById('nama').value = p.participants?.nama || '';
+  document.getElementById('kelas').value = p.participants?.kelas || '';
+  document.getElementById('judul').value = p.judul;
+  document.getElementById('deskripsi').value = p.deskripsi || '';
+  document.getElementById('tujuan').value = p.tujuan || '';
+  document.getElementById('informasi').value = p.informasi || '';
+  document.getElementById('sumber').value = p.sumber || '';
+  fileBlob = null;
+  const prev = document.getElementById('preview');
+  if (p.image_url) { prev.src = p.image_url; prev.style.display = 'block'; } else prev.style.display = 'none';
+  document.getElementById('formCard').classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+window.hapusPoster = async (id) => {
+  if (!confirm('Hapus poster ini? Tindakan tidak bisa dibatalkan.')) return;
+  const p = allPosters.find(x => x.id === id);
+  if (p?.storage_path) await sb.storage.from('posters').remove([p.storage_path]);
+  const { error } = await sb.from('posters').delete().eq('id', id);
+  if (error) { toast(error.message, 'error'); return; }
+  toast('Poster dihapus.', 'success');
+  loadPosters();
+};
+
+const loadPosters = async () => {
+  // Ambil semua poster, urutkan yang 'pending' dulu
+  const { data, error } = await sb.from('posters')
+    .select('*, participants(nama,kelas)')
+    .order('status', { ascending: true }) // 'pending' di atas 'published'
+    .order('created_at', { ascending: false });
+    
+  if (error) { document.getElementById('list').innerHTML = '<div class="empty">Gagal memuat.</div>'; return; }
+  allPosters = data || [];
+  const list = document.getElementById('list');
+  if (!allPosters.length) { list.innerHTML = '<div class="empty">Belum ada poster.</div>'; return; }
+  
+  list.innerHTML = '<div class="qr-grid">' + allPosters.map(p => {
+    let svg = '';
+    try {
+      const url = location.origin + (location.pathname.includes('/admin/') ? '/detail.html' : 'detail.html') + '?kode=' + encodeURIComponent(p.kode);
+      const q = qrcode(0, 'M'); q.addData(url); q.make();
+      svg = q.createSvgTag(3);
+    } catch(e) {}
+    
+    // Jika status pending, tampilkan tombol Setujui
+    const isPending = p.status === 'pending';
+    const badge = isPending ? '<span class="badge" style="background:#b91c1c;color:#fff;margin-bottom:5px">Menunggu Persetujuan</span>' : '';
+    const approveBtn = isPending ? `<button class="btn btn-sm btn-primary" onclick="setujuiPoster('${p.id}')">Setujui</button>` : '';
+
+    return `<div class="qr-item" style="${isPending ? 'border-color: #b91c1c; border-style: solid;' : ''}">
+      ${badge}
+      <div style="position:relative">${svg}
+        <div style="margin-top:4px"><b>${esc(p.kode)}</b></div>
+      </div>
+      <div style="font-size:.72rem;line-height:1.3;margin-top:4px">${esc(p.participants?.nama||'')}<br>${esc(p.participants?.kelas||'')}</div>
+      <div class="noprint mt-1" style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap">
+        ${approveBtn}
+        <button class="btn btn-sm btn-outline" onclick="editPoster('${p.id}')">Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="hapusPoster('${p.id}')">Hapus</button>
+      </div>
+    </div>`;
+  }).join('') + '</div>';
+};
+
+// Fungsi untuk menyetujui poster
+window.setujuiPoster = async (id) => {
+  const { error } = await sb.from('posters').update({ status: 'published' }).eq('id', id);
+  if (error) { toast(error.message, 'error'); return; }
+  toast('Poster berhasil disetujui dan tayang di galeri!', 'success');
+  loadPosters();
+};
+
+(async () => {
+  auth = await requireAuth(['admin']);
+  if (!auth) return;
+  loadPosters();
+})();
+</script>
+</body>
+</html>
