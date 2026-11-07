@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ranking — PAMERIN</title>
+<link rel="stylesheet" href="css/global.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body data-root="">
+<div id="header"></div>
+<main class="main">
+<div class="container">
+  <h1>Ranking Karya</h1>
+  <p class="text-muted">Peringkat berdasarkan rata-rata nilai dari seluruh penilai.</p>
+  <div id="content"><div class="empty">Memuat...</div></div>
+</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/nav.js"></script>
+<script>
+(async () => {
+  const { data: settings } = await sb.from('event_settings').select('ranking_published').eq('id',1).single();
+  if (!settings?.ranking_published) {
+    document.getElementById('content').innerHTML = '<div class="alert alert-info">Ranking belum dipublikasikan oleh panitia. Cek lagi nanti setelah penilaian selesai.</div>';
+    return;
+  }
+  const { data: posters } = await sb.from('posters').select('id,kode,judul,image_url,participants(nama,kelas)').eq('status','published');
+  // Rata-rata per poster dari view poster_scores (aman dibaca publik)
+  const { data: scores } = await sb.from('poster_scores').select('poster_id,jumlah,rata_rata');
+  const map = {};
+  (scores||[]).forEach(s => { map[s.poster_id] = s; });
+  const rows = (posters||[]).filter(p => map[p.id]).map(p => ({
+    ...p, count: map[p.id].jumlah, avg: Number(map[p.id].rata_rata)
+  })).sort((a,b) => b.avg - a.avg);
+
+  if (!rows.length) { document.getElementById('content').innerHTML = '<div class="empty">Belum ada penilaian.</div>'; return; }
+  document.getElementById('content').innerHTML = `
+    <div class="table-scroll"><table class="rank-table">
+      <thead><tr><th>#</th><th>Kode</th><th>Judul</th><th>Pembuat</th><th>Kelas</th><th>Responden</th><th>Rata-rata</th></tr></thead>
+      <tbody>${rows.map((r,i) => `
+        <tr class="${i===0?'top-1':''}">
+          <td class="rank-num">${i+1}</td>
+          <td><a href="detail.html?kode=${encodeURIComponent(r.kode)}">${esc(r.kode)}</a></td>
+          <td><b>${esc(r.judul)}</b></td>
+          <td>${esc(r.participants?.nama||'—')}</td>
+          <td>${esc(r.participants?.kelas||'')}</td>
+          <td>${r.count}</td>
+          <td><b style="color:var(--primary);font-size:1.1rem">${r.avg.toFixed(1)}</b></td>
+        </tr>`).join('')}</tbody>
+    </table></div>`;
+})();
+</script>
+</body>
+</html>

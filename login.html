@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Login — PAMERIN</title>
+<link rel="stylesheet" href="css/global.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body data-root="">
+<div id="header"></div>
+<main class="main">
+<div class="container-narrow" style="max-width:440px">
+  <div class="card">
+    <h1 style="margin-top:0">Masuk</h1>
+    <p class="text-muted">Untuk penilai dan administrator.</p>
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input id="email" type="email" required autocomplete="username">
+      <label for="password">Password</label>
+      <input id="password" type="password" required autocomplete="current-password">
+      <button class="btn btn-primary mt-2" type="submit" style="width:100%">Masuk</button>
+      <div id="msg" class="mt-2"></div>
+    </form>
+  </div>
+  <p class="text-center text-muted mt-2" style="font-size:.85rem">Lupa password? Hubungi admin sekolah.</p>
+</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/nav.js"></script>
+<script>
+document.getElementById('loginForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('msg');
+  msg.className = 'alert mt-2'; msg.textContent = 'Memproses...';
+  const { error } = await sb.auth.signInWithPassword({
+    email: document.getElementById('email').value,
+    password: document.getElementById('password').value
+  });
+  if (error) { msg.className = 'alert mt-2 alert-error'; msg.textContent = error.message; return; }
+  const p = await getProfile();
+  if (!p || !p.active) {
+    await sb.auth.signOut();
+    msg.className = 'alert mt-2 alert-error'; msg.textContent = 'Akun belum diaktifkan oleh admin.';
+    return;
+  }
+  location.href = p.role === 'admin' ? 'admin/dashboard.html' : 'judge/dashboard.html';
+};
+(async () => {
+  const s = await getSession();
+  if (s) {
+    const p = await getProfile();
+    if (p?.active) location.href = p.role === 'admin' ? 'admin/dashboard.html' : 'judge/dashboard.html';
+  }
+})();
+</script>
+</body>
+</html>

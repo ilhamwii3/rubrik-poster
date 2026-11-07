@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Galeri — PAMERIN</title>
+<link rel="stylesheet" href="css/global.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body data-root="">
+<div id="header"></div>
+<main class="main">
+<div class="container">
+  <h1>Galeri Karya</h1>
+  <p class="text-muted">Semua poster yang dipamerkan. Scan QR di poster fisik untuk membuka halaman ini juga.</p>
+
+  <div class="card mb-3" style="padding:14px">
+    <div class="flex gap-1" style="flex-wrap:wrap">
+      <input id="search" placeholder="Cari judul atau nama siswa..." style="flex:2;min-width:200px">
+      <select id="kelasFilter" style="flex:1;min-width:140px"><option value="">Semua kelas</option></select>
+      <select id="sortBy" style="flex:1;min-width:140px">
+        <option value="newest">Terbaru</option>
+        <option value="judul">Judul A-Z</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="grid" class="poster-grid">
+    <div class="poster-card"><div class="skeleton" style="aspect-ratio:3/4"></div></div>
+    <div class="poster-card"><div class="skeleton" style="aspect-ratio:3/4"></div></div>
+    <div class="poster-card"><div class="skeleton" style="aspect-ratio:3/4"></div></div>
+    <div class="poster-card"><div class="skeleton" style="aspect-ratio:3/4"></div></div>
+  </div>
+</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/nav.js"></script>
+<script>
+let allPosters = [];
+const render = () => {
+  const q = document.getElementById('search').value.toLowerCase();
+  const k = document.getElementById('kelasFilter').value;
+  const s = document.getElementById('sortBy').value;
+  let list = allPosters.filter(p => {
+    if (k && p.participants?.kelas !== k) return false;
+    if (q && !((p.judul + ' ' + (p.participants?.nama || '')).toLowerCase().includes(q))) return false;
+    return true;
+  });
+  if (s === 'judul') list.sort((a, b) => a.judul.localeCompare(b.judul));
+  const grid = document.getElementById('grid');
+  if (!list.length) { grid.innerHTML = '<div class="empty" style="grid-column:1/-1">Tidak ada karya yang cocok.</div>'; return; }
+  grid.innerHTML = list.map(p => `
+    <a href="detail.html?kode=${encodeURIComponent(p.kode)}" class="poster-card">
+      <span class="kode-badge">${esc(p.kode)}</span>
+      <img src="${esc(p.image_url || '')}" alt="${esc(p.judul)}" loading="lazy" onerror="this.style.opacity=.3">
+      <div class="meta"><h4>${esc(p.judul)}</h4><small>${esc(p.participants?.nama || '—')} · ${esc(p.participants?.kelas || '')}</small></div>
+    </a>`).join('');
+};
+
+(async () => {
+  const { data, error } = await sb.from('posters')
+    .select('kode,judul,image_url,created_at,participants(nama,kelas)')
+    .eq('status', 'published').order('created_at', { ascending: false });
+  if (error) { toast(error.message, 'error'); return; }
+  allPosters = data || [];
+  const kelas = [...new Set(allPosters.map(p => p.participants?.kelas).filter(Boolean))].sort();
+  document.getElementById('kelasFilter').innerHTML = '<option value="">Semua kelas</option>' + kelas.map(k => `<option>${esc(k)}</option>`).join('');
+  render();
+  ['search','kelasFilter','sortBy'].forEach(id => document.getElementById(id).addEventListener('input', render));
+})();
+</script>
+</body>
+</html>

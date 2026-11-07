@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scan QR — PAMERIN</title>
+<link rel="stylesheet" href="css/global.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body data-root="">
+<div id="header"></div>
+<main class="main">
+<div class="container-narrow">
+  <h1>Scan QR Poster</h1>
+  <p class="text-muted">Arahkan kamera ke QR Code pada poster untuk membuka halaman detail.</p>
+  <div class="card">
+    <video id="cam" playsinline muted></video>
+    <canvas id="cv" style="display:none"></canvas>
+    <div class="flex gap-1 mt-2">
+      <button id="start" class="btn btn-primary">Mulai Kamera</button>
+      <button id="stop" class="btn btn-outline">Tutup Kamera</button>
+    </div>
+    <div id="msg" class="alert mt-2" style="display:none"></div>
+    <div class="mt-3" style="border-top:1px solid var(--border);padding-top:16px">
+      <label for="manual">Atau ketik kode poster (contoh: P001)</label>
+      <div class="flex gap-1">
+        <input id="manual" placeholder="P001">
+        <button class="btn btn-secondary" onclick="bukaManual()">Buka</button>
+      </div>
+    </div>
+  </div>
+</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="js/config.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/nav.js"></script>
+<script>
+let stream = null, raf = null;
+const showMsg = (t, type='info') => { const m = document.getElementById('msg'); m.className = 'alert mt-2 alert-' + type; m.textContent = t; m.style.display = 'block'; };
+const start = async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const v = document.getElementById('cam');
+    v.srcObject = stream; await v.play();
+    showMsg('Kamera aktif. Arahkan ke QR poster.', 'info');
+    tick();
+  } catch (e) { showMsg('Kamera tidak bisa diakses. Gunakan input manual di bawah.', 'error'); }
+};
+const stop = () => {
+  if (raf) cancelAnimationFrame(raf); raf = null;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+};
+const tick = () => {
+  const v = document.getElementById('cam');
+  if (!stream) return;
+  if (v.readyState === v.HAVE_ENOUGH_DATA) {
+    const c = document.getElementById('cv'), x = c.getContext('2d');
+    c.width = v.videoWidth; c.height = v.videoHeight; x.drawImage(v, 0, 0);
+    const r = jsQR(x.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+    if (r && r.data) {
+      const m = r.data.match(/kode=([A-Z0-9]+)/i);
+      if (m) { stop(); location.href = 'detail.html?kode=' + encodeURIComponent(m[1].toUpperCase()); return; }
+    }
+  }
+  raf = requestAnimationFrame(tick);
+};
+const bukaManual = () => {
+  const k = document.getElementById('manual').value.trim().toUpperCase();
+  if (k) location.href = 'detail.html?kode=' + encodeURIComponent(k);
+};
+document.getElementById('start').onclick = start;
+document.getElementById('stop').onclick = stop;
+</script>
+</body>
+</html>

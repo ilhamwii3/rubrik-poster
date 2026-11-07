@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Upload Karya — PAMERIN</title>
+<link rel="stylesheet" href="css/global.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body data-root="">
+<div id="header"></div>
+<main class="main">
+<div class="container-narrow" style="max-width:640px">
+  <h1>Upload Karya Poster</h1>
+  <p class="text-muted">Isi data di bawah ini. Poster kamu akan tampil di galeri setelah disetujui oleh panitia.</p>
+  
+  <div class="card mt-3">
+    <label>Nama Siswa / Kelompok</label>
+    <input id="nama" required placeholder="Misal: Irawan Budi Santoso / Kelompok 1">
+    
+    <label>Kelas</label>
+    <input id="kelas" required placeholder="Misal: X RPL 2 (SATU KELAS WAJIB SAMA!)">
+    
+    <label>Judul Poster</label>
+    <input id="judul" required placeholder="Misal: Keindahan Ladang Sawit">
+    
+    <label>Deskripsi Singkat</label>
+    <textarea id="deskripsi" rows="2" placeholder="Ceritakan sedikit tentang poster kamu..."></textarea>
+    
+    <label>Foto Poster (Maks 10MB, format JPG/PNG)</label>
+    <input id="file" type="file" accept="image/*" required>
+    <img id="preview" style="max-width:100%;margin-top:10px;border-radius:8px;display:none">
+    
+    <button class="btn btn-primary mt-3" style="width:100%" id="submitBtn" onclick="uploadKarya()">Kirim Karya</button>
+    <div id="msg" class="mt-2"></div>
+  </div>
+</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/nav.js"></script>
+<script>
+let fileBlob = null;
+
+// Preview gambar sebelum diupload
+document.getElementById('file').onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  if (f.size > 10 * 1024 * 1024) { alert('Maksimal 10MB'); e.target.value = ''; return; }
+  fileBlob = await compressImage(f); // Kompres otomatis dari supabase.js
+  document.getElementById('preview').src = URL.createObjectURL(fileBlob);
+  document.getElementById('preview').style.display = 'block';
+};
+
+window.uploadKarya = async () => {
+  const nama = document.getElementById('nama').value.trim();
+  const kelas = document.getElementById('kelas').value.trim();
+  const judul = document.getElementById('judul').value.trim();
+  const deskripsi = document.getElementById('deskripsi').value.trim();
+  const msg = document.getElementById('msg');
+  const btn = document.getElementById('submitBtn');
+
+  if (!nama || !kelas || !judul || !fileBlob) {
+    msg.className = 'alert alert-error mt-2'; msg.textContent = 'Lengkapi semua data dan foto poster.'; return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Mengunggah...';
+  msg.className = 'alert mt-2'; msg.textContent = 'Sedang mengunggah foto...';
+
+  try {
+    // 1. Upload foto ke Storage
+    const path = `poster-${Date.now()}-${Math.random().toString(36).slice(2,8)}.jpg`;
+    const { error: upErr } = await sb.storage.from('posters').upload(path, fileBlob, { contentType: 'image/jpeg' });
+    if (upErr) throw upErr;
+    
+    const { data: pub } = sb.storage.from('posters').getPublicUrl(path);
+
+    msg.textContent = 'Menyimpan data...';
+
+    // 2. Simpan data peserta
+    const { data: part, error: pErr } = await sb.from('participants').insert({ nama, kelas }).select().single();
+    if (pErr) throw pErr;
+
+    // 3. Simpan data poster (status PENDING)
+    const { error: postErr } = await sb.from('posters').insert({
+      participant_id: part.id,
+      judul,
+      deskripsi: deskripsi || null,
+      image_url: pub.publicUrl,
+      storage_path: path,
+      status: 'pending' // Status pending agar tidak langsung tayang
+    });
+    if (postErr) throw postErr;
+
+    msg.className = 'alert alert-info mt-2';
+    msg.innerHTML = '✅ <b>Berhasil!</b> Karya kamu sudah masuk ke panitia. Tunggu persetujuan ya.';
+    document.getElementById('nama').value = '';
+    document.getElementById('kelas').value = '';
+    document.getElementById('judul').value = '';
+    document.getElementById('deskripsi').value = '';
+    document.getElementById('file').value = '';
+    document.getElementById('preview').style.display = 'none';
+    fileBlob = null;
+    btn.disabled = false; btn.textContent = 'Kirim Karya';
+  } catch (e) {
+    msg.className = 'alert alert-error mt-2'; msg.textContent = 'Gagal: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Kirim Karya';
+  }
+};
+</script>
+</body>
+</html>

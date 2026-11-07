@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PAMERIN — Pameran Kokurikuler 2026</title>
+<link rel="stylesheet" href="css/global.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body data-root="">
+<div id="header"></div>
+<main class="main">
+<div class="container">
+  <section class="hero">
+    <span class="badge" id="eventDate">20 November 2026</span>
+    <h1>Karya siswa, diapresiasi.<br>Bukan hanya dipajang.</h1>
+    <p class="lead">PAMERIN adalah platform pameran digital kokurikuler. Scan QR di setiap poster untuk melihat karya lengkap, atau bagi guru — menilai langsung dari HP.</p>
+    <div class="hero-actions">
+      <a href="gallery.html" class="btn btn-primary">Jelajahi Galeri</a>
+      <a href="scan.html" class="btn btn-outline">📷 Scan QR Poster</a>
+      <a href="ranking.html" class="btn btn-ghost">Lihat Ranking</a>
+      <a href="submit.html" class="btn btn-secondary">📤 Upload Poster</a>
+    </div>
+  </section>
+
+  <section class="mb-3">
+    <h2>Statistik Pameran</h2>
+    <div class="stats-grid mt-2" id="stats">
+      <div class="stat-card"><div class="num">—</div><div class="lbl">Poster</div></div>
+      <div class="stat-card"><div class="num">—</div><div class="lbl">Peserta</div></div>
+      <div class="stat-card"><div class="num">—</div><div class="lbl">Penilaian</div></div>
+      <div class="stat-card"><div class="num">—</div><div class="lbl">Rata-rata</div></div>
+    </div>
+  </section>
+
+  <section class="mb-3">
+    <div class="flex-between mb-2">
+      <h2 style="margin:0">Karya Terbaru</h2>
+      <a href="gallery.html" class="btn btn-sm btn-outline">Semua karya →</a>
+    </div>
+    <div class="poster-grid" id="featured">
+      <div class="poster-card"><div class="skeleton" style="aspect-ratio:3/4"></div></div>
+      <div class="poster-card"><div class="skeleton" style="aspect-ratio:3/4"></div></div>
+      <div class="poster-card"><div class="skeleton" style="aspect-ratio:3/4"></div></div>
+    </div>
+  </section>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="container">PAMERIN · Digital Exhibition &amp; Assessment Platform · <span id="eventName">Pameran Kokurikuler</span></div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/nav.js"></script>
+<script>
+(async () => {
+  try {
+    const { data: settings } = await sb.from('event_settings').select('*').eq('id', 1).single();
+    if (settings) {
+      document.getElementById('eventName').textContent = settings.nama_acara || 'Pameran Kokurikuler';
+      if (settings.tanggal) {
+        document.getElementById('eventDate').textContent = new Date(settings.tanggal).toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' });
+      }
+    }
+    // Skor agregat dari view poster_scores (terisi setelah ranking dipublikasikan)
+    const [{ count: posterCount }, { count: participantCount }, { data: scoreData }] = await Promise.all([
+      sb.from('posters').select('*', { count: 'exact', head: true }).eq('status', 'published'),
+      sb.from('participants').select('*', { count: 'exact', head: true }),
+      sb.from('poster_scores').select('jumlah,rata_rata')
+    ]);
+    const totalNilai = (scoreData || []).reduce((s, r) => s + r.jumlah, 0);
+    const avg = totalNilai ? ((scoreData.reduce((s, r) => s + Number(r.rata_rata) * r.jumlah, 0)) / totalNilai).toFixed(1) : '—';
+    document.getElementById('stats').innerHTML = `
+      <div class="stat-card"><div class="num">${posterCount ?? 0}</div><div class="lbl">Poster</div></div>
+      <div class="stat-card"><div class="num">${participantCount ?? 0}</div><div class="lbl">Peserta</div></div>
+      <div class="stat-card"><div class="num">${totalNilai}</div><div class="lbl">Penilaian</div></div>
+      <div class="stat-card"><div class="num">${avg}</div><div class="lbl">Rata-rata</div></div>`;
+
+    const { data: posters } = await sb.from('posters')
+      .select('kode,judul,image_url,participants(nama,kelas)')
+      .eq('status', 'published').order('created_at', { ascending: false }).limit(6);
+    const feat = document.getElementById('featured');
+    if (posters?.length) {
+      feat.innerHTML = posters.map(p => `
+        <a href="detail.html?kode=${encodeURIComponent(p.kode)}" class="poster-card">
+          <span class="kode-badge">${esc(p.kode)}</span>
+          <img src="${esc(p.image_url || '')}" alt="${esc(p.judul)}" loading="lazy" onerror="this.style.opacity=.3">
+          <div class="meta"><h4>${esc(p.judul)}</h4><small>${esc(p.participants?.nama || '—')} · ${esc(p.participants?.kelas || '')}</small></div>
+        </a>`).join('');
+    } else {
+      feat.innerHTML = '<div class="empty" style="grid-column:1/-1">Belum ada karya. Admin belum upload poster.</div>';
+    }
+  } catch (e) {
+    console.error(e);
+    toast('Gagal memuat data: ' + e.message, 'error');
+  }
+})();
+</script>
+</body>
+</html>
