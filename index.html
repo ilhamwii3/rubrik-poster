@@ -85,9 +85,11 @@
   try {
     const { data: settings } = await sb.from('event_settings').select('*').eq('id', 1).single();
     if (settings) {
-      document.getElementById('eventName').textContent = settings.nama_acara || 'Pameran Kokurikuler';
-      if (settings.tanggal) {
-        document.getElementById('eventDate').textContent = new Date(settings.tanggal).toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' });
+      const elName = document.getElementById('eventName');
+      if (elName) elName.textContent = settings.nama_acara || 'Pameran Kokurikuler';
+      const elDate = document.getElementById('eventDate');
+      if (settings.tanggal && elDate) {
+        elDate.textContent = new Date(settings.tanggal).toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' });
       }
     }
     // Skor agregat dari view poster_scores (terisi setelah ranking dipublikasikan)
