@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Beri Nilai — PAMERIN</title>
+<link rel="stylesheet" href="css/global.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body data-root="">
+<div id="header"></div>
+<main class="main">
+<div class="container-narrow" id="content"><div class="empty">Memuat poster...</div></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/nav.js"></script>
+<script>
+const RUBRIK = [
+  ['Kesesuaian tema', 'Poster sesuai tema: belajar dari pahlawan.'],
+  ['Ketepatan informasi', 'Foto, deskripsi, biografi, peran, sumbangsih benar.'],
+  ['Kreativitas, desain dan tata letak', 'Visual menarik, komposisi seimbang, mudah dibaca.'],
+  ['Kerapian', 'Bersih, rapi, pigura dan hasil cetak baik.']
+];
+let scores = [0,0,0,0], curPoster = null;
+
+function draw() {
+  const total = scores.reduce((a,b)=>a+b,0);
+  const nilai = (total/20*100).toFixed(0);
+  document.getElementById('crits').innerHTML = RUBRIK.map((r,i) => `
+    <div class="crit-block">
+      <p class="crit-title">${i+1}. ${r[0]}</p>
+      <p class="crit-desc">${r[1]}</p>
+      <div class="score-group">
+        ${[1,2,3,4,5].map(n => `<button class="score-btn ${scores[i]===n?'on':''}" onclick="setScore(${i},${n})">${n}</button>`).join('')}
+      </div>
+    </div>`).join('');
+  document.getElementById('total').textContent = total;
+  document.getElementById('nilai').textContent = nilai;
+}
+window.setScore = (i, n) => { scores[i] = n; draw(); };
+
+window.simpanSiswa = async () => {
+  const nama = document.getElementById('nama').value.trim();
+  const kelas = document.getElementById('kelas').value.trim();
+  if (!nama || !kelas) { toast('Isi nama dan kelas dulu ya.', 'error'); return; }
+  if (scores.includes(0)) { toast('Semua aspek harus dinilai (1–5).', 'error'); return; }
+  
+  const payload = {
+    poster_id: curPoster.id,
+    judge_id: null, // Siswa tidak punya ID guru
+    reviewer_type: 'siswa',
+    reviewer_name: nama,
+    reviewer_kelas: kelas,
+    s1: scores[0], s2: scores[1], s3: scores[2], s4: scores[3],
+    kritik_saran: document.getElementById('kritik').value.trim() || null
+  };
+  
+  const { error } = await sb.from('assessments').insert(payload);
+  if (error) { toast('Gagal menyimpan: ' + error.message, 'error'); return; }
+  
+  // Simpan nama di localStorage agar tidak ketik ulang
+  localStorage.setItem('siswa_nama', nama);
+  localStorage.setItem('siswa_kelas', kelas);
+  localStorage.setItem('nilai_' + curPoster.id, '1'); // cegah menilai 2x di HP yang sama
+
+  toast('Terima kasih! Penilaianmu tersimpan.', 'success');
+  setTimeout(() => location.href = 'detail.html?kode=' + encodeURIComponent(curPoster.kode), 1000);
+};
+
+(async () => {
+  const kode = new URLSearchParams(location.search).get('kode');
+  if (!kode) { document.getElementById('content').innerHTML = '<div class="empty">Kode poster tidak ada.</div>'; return; }
+  const { data: p, error } = await sb.from('posters').select('*, participants(nama,kelas)').eq('kode', kode).single();
+  if (error || !p) { document.getElementById('content').innerHTML = '<div class="empty">Poster tidak ditemukan.</div>'; return; }
+  curPoster = p;
+
+  // Cek apakah siswa di device ini sudah menilai poster ini
+  const sudahNilai = localStorage.getItem('nilai_' + p.id);
+  if (sudahNilai) {
+    document.getElementById('content').innerHTML = `<div class="card text-center"><h3>Kamu sudah menilai poster ini!</h3><p class="text-muted">Terima kasih atas partisipasimu.</p><a href="detail.html?kode=${p.kode}" class="btn btn-primary mt-2">Kembali ke Poster</a></div>`;
+    return;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <a href="detail.html?kode=${encodeURIComponent(p.kode)}" class="btn btn-ghost btn-sm mb-2">← Kembali ke poster</a>
+    <div class="card mb-2">
+      <span class="badge badge-accent">${esc(p.kode)}</span>
+      <h2 style="margin:8px 0 4px">${esc(p.judul)}</h2>
+      <p class="text-muted">${esc(p.participants?.nama||'')} · ${esc(p.participants?.kelas||'')}</p>
+      <img src="${esc(p.image_url||'')}" style="border-radius:var(--radius);margin-top:12px;width:100%">
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Beri Penilaian (Siswa)</h3>
+      <div class="flex gap-2" style="flex-wrap:wrap">
+        <div style="flex:1;min-width:150px"><label>Nama Kamu</label><input id="nama" value="${localStorage.getItem('siswa_nama')||''}"></div>
+        <div style="flex:1;min-width:150px"><label>Kelas Kamu</label><input id="kelas" value="${localStorage.getItem('siswa_kelas')||''}"></div>
+      </div>
+      <div id="crits" class="mt-2"></div>
+      <label>Kritik & saran (opsional)</label>
+      <textarea id="kritik" placeholder="Keren banget!..."></textarea>
+      <div class="total-display">
+        <div><div class="sub">Skor</div><div class="big"><span id="total">0</span><span class="sub">/20</span></div></div>
+        <div style="margin-left:auto;text-align:right"><div class="sub">Nilai</div><div class="big" style="color:var(--primary)"><span id="nilai">0</span></div></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="simpanSiswa()">Kirim Penilaian</button>
+    </div>`;
+  draw();
+})();
+</script>
+</body>
+</html>
