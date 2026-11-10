@@ -12,7 +12,7 @@
 <main class="main">
 <div class="container">
   <h1>Ranking Karya</h1>
-  <p class="text-muted">Peringkat berdasarkan rata-rata nilai dari seluruh penilai.</p>
+  <p class="text-muted">Peringkat berdasarkan rata-rata nilai guru. Nilai siswa ditampilkan terpisah.</p>
   <div id="content"><div class="empty">Memuat...</div></div>
 </div>
 </main>
@@ -30,17 +30,20 @@
   }
   const { data: posters } = await sb.from('posters').select('id,kode,judul,image_url,participants(nama,kelas)').eq('status','published');
   // Rata-rata per poster dari view poster_scores (aman dibaca publik)
-  const { data: scores } = await sb.from('poster_scores').select('poster_id,jumlah,rata_rata');
+  const { data: scores } = await sb.from('poster_scores').select('poster_id,jumlah_guru,rata_guru,jumlah_siswa,rata_siswa');
   const map = {};
   (scores||[]).forEach(s => { map[s.poster_id] = s; });
   const rows = (posters||[]).filter(p => map[p.id]).map(p => ({
-    ...p, count: map[p.id].jumlah, avg: Number(map[p.id].rata_rata)
-  })).sort((a,b) => b.avg - a.avg);
+    ...p,
+    countGuru: map[p.id].jumlah_guru, countSiswa: map[p.id].jumlah_siswa,
+    avgGuru: map[p.id].rata_guru === null ? null : Number(map[p.id].rata_guru),
+    avgSiswa: map[p.id].rata_siswa === null ? null : Number(map[p.id].rata_siswa)
+  })).sort((a,b) => (b.avgGuru ?? -1) - (a.avgGuru ?? -1) || (b.avgSiswa ?? -1) - (a.avgSiswa ?? -1)); // urut nilai guru
 
   if (!rows.length) { document.getElementById('content').innerHTML = '<div class="empty">Belum ada penilaian.</div>'; return; }
   document.getElementById('content').innerHTML = `
     <div class="table-scroll"><table class="rank-table">
-      <thead><tr><th>#</th><th>Kode</th><th>Judul</th><th>Pembuat</th><th>Kelas</th><th>Responden</th><th>Rata-rata</th></tr></thead>
+      <thead><tr><th>#</th><th>Kode</th><th>Judul</th><th>Pembuat</th><th>Kelas</th><th>Nilai Guru</th><th>Nilai Siswa</th></tr></thead>
       <tbody>${rows.map((r,i) => `
         <tr class="${i===0?'top-1':''}">
           <td class="rank-num">${i+1}</td>
@@ -48,8 +51,8 @@
           <td><b>${esc(r.judul)}</b></td>
           <td>${esc(r.participants?.nama||'—')}</td>
           <td>${esc(r.participants?.kelas||'')}</td>
-          <td>${r.count}</td>
-          <td><b style="color:var(--primary);font-size:1.1rem">${r.avg.toFixed(1)}</b></td>
+          <td><b style="color:var(--primary);font-size:1.1rem">${r.avgGuru === null ? '—' : r.avgGuru.toFixed(1)}</b><br><small class="text-muted">${r.countGuru} guru</small></td>
+          <td><b style="color:var(--accent);font-size:1.1rem">${r.avgSiswa === null ? '—' : r.avgSiswa.toFixed(1)}</b><br><small class="text-muted">${r.countSiswa} siswa</small></td>
         </tr>`).join('')}</tbody>
     </table></div>`;
 })();
