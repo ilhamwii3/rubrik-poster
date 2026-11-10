@@ -51,8 +51,8 @@ window.togglePublish = async () => {
 
 window.exportCsv = () => {
   const rows = [
-    ['Kode','Judul','Siswa','Kelas','Penilai','S1','S2','S3','S4','Skor','Nilai','Tanggal'],
-    ...detailData.map(d => [d.posters?.kode, d.posters?.judul, d.posters?.participants?.nama, d.posters?.participants?.kelas, d.profiles?.full_name, d.s1, d.s2, d.s3, d.s4, d.skor, d.nilai, new Date(d.created_at).toLocaleString('id-ID')])
+    ['Kode','Judul','Siswa','Kelas','Tipe Penilai','Penilai','Kelas Penilai','S1','S2','S3','S4','Skor','Nilai','Tanggal'],
+    ...detailData.map(d => [d.posters?.kode, d.posters?.judul, d.posters?.participants?.nama, d.posters?.participants?.kelas, d.reviewer_type, d.reviewer_type === 'guru' ? d.profiles?.full_name : d.reviewer_name, d.reviewer_kelas, d.s1, d.s2, d.s3, d.s4, d.skor, d.nilai, new Date(d.created_at).toLocaleString('id-ID')])
   ];
   const csv = rows.map(r => r.map(c => '"' + String(c ?? '').replace(/"/g, '""') + '"').join(',')).join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
@@ -68,26 +68,30 @@ window.exportCsv = () => {
   document.getElementById('publishToggle').checked = !!settings?.ranking_published;
 
   const { data: posters } = await sb.from('posters').select('id,kode,judul,participants(nama,kelas)').eq('status','published').order('kode');
-  const { data: assess } = await sb.from('assessments').select('*, profiles(full_name), posters(kode,judul,participants(nama,kelas))');
+  const { data: assess } = await sb.from('assessments').select('*, profiles(full_name), posters(kode,judul,participants(nama,kelas))').order('created_at', { ascending: false });
   detailData = assess || [];
 
   const by = {};
-  detailData.forEach(a => { (by[a.poster_id] = by[a.poster_id] || []).push(a); });
+  detailData.forEach(a => {
+    if (!by[a.poster_id]) by[a.poster_id] = { guru: [], siswa: [] };
+    (a.reviewer_type === 'siswa' ? by[a.poster_id].siswa : by[a.poster_id].guru).push(a);
+  });
+  const mean = list => list.length ? list.reduce((s,a)=>s+Number(a.nilai),0)/list.length : null;
   summaryData = (posters || []).map(p => {
-    const list = by[p.id] || [];
-    const avg = list.length ? list.reduce((s,a)=>s+Number(a.nilai),0)/list.length : null;
-    return { ...p, count: list.length, avg };
-  }).sort((a,b) => (b.avg ?? -1) - (a.avg ?? -1));
+    const g = by[p.id]?.guru || [];
+    const s = by[p.id]?.siswa || [];
+    return { ...p, countGuru: g.length, countSiswa: s.length, avgGuru: mean(g), avgSiswa: mean(s) };
+  }).sort((a,b) => (b.avgGuru ?? -1) - (a.avgGuru ?? -1) || (b.avgSiswa ?? -1) - (a.avgSiswa ?? -1));
 
   document.getElementById('summary').innerHTML = summaryData.length
-    ? `<table class="rank-table"><thead><tr><th>#</th><th>Kode</th><th>Judul</th><th>Siswa</th><th>Kelas</th><th>Responden</th><th>Rata-rata</th></tr></thead><tbody>
-       ${summaryData.map((s,i) => `<tr><td>${i+1}</td><td>${esc(s.kode)}</td><td><b>${esc(s.judul)}</b></td><td>${esc(s.participants?.nama||'—')}</td><td>${esc(s.participants?.kelas||'')}</td><td>${s.count}</td><td><b>${s.avg===null?'—':s.avg.toFixed(1)}</b></td></tr>`).join('')}
+    ? `<table class="rank-table"><thead><tr><th>#</th><th>Kode</th><th>Judul</th><th>Siswa</th><th>Kelas</th><th>Nilai Guru</th><th>Nilai Siswa</th></tr></thead><tbody>
+       ${summaryData.map((s,i) => `<tr><td>${i+1}</td><td>${esc(s.kode)}</td><td><b>${esc(s.judul)}</b></td><td>${esc(s.participants?.nama||'—')}</td><td>${esc(s.participants?.kelas||'')}</td><td><b>${s.avgGuru===null?'—':s.avgGuru.toFixed(1)}</b> (${s.countGuru})</td><td><b>${s.avgSiswa===null?'—':s.avgSiswa.toFixed(1)}</b> (${s.countSiswa})</td></tr>`).join('')}
        </tbody></table>`
     : '<div class="empty">Belum ada poster.</div>';
 
   document.getElementById('detail').innerHTML = detailData.length
     ? `<table class="rank-table"><thead><tr><th>Kode</th><th>Judul</th><th>Penilai</th><th>Skor</th><th>Nilai</th><th>Tanggal</th><th>Kritik/Saran</th></tr></thead><tbody>
-       ${detailData.map(d => `<tr><td>${esc(d.posters?.kode)}</td><td>${esc(d.posters?.judul)}</td><td>${esc(d.profiles?.full_name||'—')}</td><td>${d.skor}</td><td><b>${Number(d.nilai).toFixed(0)}</b></td><td>${new Date(d.created_at).toLocaleDateString('id-ID')}</td><td style="max-width:240px;white-space:normal">${esc(d.kritik_saran||'—')}</td></tr>`).join('')}
+       ${detailData.map(d => `<tr><td>${esc(d.posters?.kode)}</td><td>${esc(d.posters?.judul)}</td><td>${d.reviewer_type === 'siswa' ? esc(d.reviewer_name||'—') + (d.reviewer_kelas ? ' (' + esc(d.reviewer_kelas) + ')' : '') : esc(d.profiles?.full_name||'—')}<br><small class="badge">${esc(d.reviewer_type||'guru')}</small></td><td>${d.skor}</td><td><b>${Number(d.nilai).toFixed(0)}</b></td><td>${new Date(d.created_at).toLocaleDateString('id-ID')}</td><td style="max-width:240px;white-space:normal">${esc(d.kritik_saran||'—')}</td></tr>`).join('')}
        </tbody></table>`
     : '<div class="empty">Belum ada penilaian.</div>';
 })();
