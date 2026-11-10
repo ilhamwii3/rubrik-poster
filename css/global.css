@@ -1,28 +1,54 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --plum:#190019; --deep:#2B124C; --muted:#522B5B;
-  --dusty:#854F6C; --pink:#DFB6B2; --peach:#FBE4D8;
-  --bg:var(--peach); --surface:#fff; --surface-2:#fff;
-  --text:var(--plum); --text-muted:var(--dusty);
-  --border:#e8d4cf; --primary:var(--deep); --primary-hover:var(--muted);
-  --accent:var(--dusty);
-  --shadow:0 1px 2px rgba(25,0,25,.06),0 2px 8px rgba(25,0,25,.04);
-  --radius:10px; --radius-sm:6px;
-  --font-head:'Fraunces',Georgia,serif;
-  --font-body:'Plus Jakarta Sans',system-ui,sans-serif;
+  /* Palet Warna Baru */
+  --teal: #0097a1;
+  --dark: #1F2326;
+  --slate: #4e5d66;
+  --light: #e6e8ea;
+  --gray: #7c8c94;
+  
+  /* Light Mode Variables */
+  --bg: var(--light);
+  --surface: #ffffff;
+  --surface-2: #f4f5f6;
+  --text: var(--dark);
+  --text-muted: var(--slate);
+  --border: var(--gray);
+  --primary: var(--teal);
+  --primary-hover: #004448;
+  --accent: var(--slate);
+  --shadow: 0 2px 4px rgba(31,35,38,0.06);
+  --radius: 8px;
+  --radius-sm: 6px;
+  --font-head: 'Inter', system-ui, sans-serif; /* Font dibuat lebih clean */
+  --font-body: 'Inter', system-ui, sans-serif;
 }
-@media (prefers-color-scheme:dark) {
+
+@media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg:#190019; --surface:#2B124C; --surface-2:#3a1e55;
-    --text:var(--peach); --text-muted:var(--pink); --border:#4a2e5c;
-    --primary:var(--pink); --primary-hover:var(--peach); --accent:var(--pink);
+    --bg: var(--dark);
+    --surface: #2a2f33;
+    --surface-2: #333a3e;
+    --text: var(--light);
+    --text-muted: var(--gray);
+    --border: var(--slate);
+    --primary: var(--teal);
+    --primary-hover: #007278;
+    --accent: var(--gray);
   }
 }
+
 [data-theme="dark"] {
-  --bg:#190019; --surface:#2B124C; --surface-2:#3a1e55;
-  --text:var(--peach); --text-muted:var(--pink); --border:#4a2e5c;
-  --primary:var(--pink); --primary-hover:var(--peach); --accent:var(--pink);
+  --bg: var(--dark);
+  --surface: #2a2f33;
+  --surface-2: #333a3e;
+  --text: var(--light);
+  --text-muted: var(--gray);
+  --border: var(--slate);
+  --primary: var(--teal);
+  --primary-hover: #007278;
+  --accent: var(--gray);
 }
 
 *{box-sizing:border-box}
@@ -68,8 +94,8 @@ img{max-width:100%;display:block}
 
 /* Buttons */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border-radius:var(--radius-sm);font:inherit;font-weight:600;font-size:.92rem;border:1px solid transparent;cursor:pointer;transition:all .15s;text-decoration:none;line-height:1.3}
-.btn-primary{background:var(--primary);color:var(--peach)}
-.btn-primary:hover{background:var(--primary-hover);color:var(--peach);text-decoration:none}
+.btn-primary{background:var(--primary);color:var(--light);}
+.btn-primary:hover{background:var(--primary-hover);color:var(--light);text-decoration:none}
 .btn-secondary{background:var(--accent);color:#fff}
 .btn-secondary:hover{background:var(--muted);color:#fff;text-decoration:none}
 .btn-outline{background:transparent;border-color:var(--border);color:var(--text)}
@@ -102,3 +128,129 @@ textarea{min-height:90px;resize:vertical}
 .flex{display:flex}.flex-between{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
 .gap-1{gap:8px}.gap-2{gap:16px}
 .hidden{display:none !important}
+
+/* =========================================
+   PERBAIKAN KONTRAS WARNA (DARK MODE)
+   ========================================= */
+
+/* 1. Teks "Rubrik Poster" di Header agar terang (putih/light) */
+.brand {
+  color: var(--text) !important; 
+}
+
+/* 2. Angka Statistik (0, 6, -) agar terang dan jelas */
+.stat-card .num {
+  color: var(--text) !important; 
+}
+
+/* 3. Tombol "Upload Karya" agar warnanya elegan (Putih tulang dengan teks gelap) */
+.btn-secondary {
+  background: var(--light) !important; 
+  color: var(--dark) !important; 
+  border: 1px solid var(--light) !important;
+  font-weight: 600;
+}
+.btn-secondary:hover {
+  background: var(--gray) !important;
+  color: var(--dark) !important;
+}
+
+/* 4. Teks abu-abu (sub-judul) dibuat sedikit lebih terang di Dark Mode */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --text-muted: #A0AAB2; /* Abu-abu yang lebih terang */
+  }
+}
+[data-theme="dark"] {
+  --text-muted: #A0AAB2;
+}
+
+/* =========================================
+   PERBAIKAN KONTRAS WARNA & FOOTER
+   ========================================= */
+
+/* 1. Teks "Rubrik Poster" di pojok kiri atas agar jadi putih terang */
+.brand {
+  color: var(--text) !important; 
+}
+
+/* 2. Angka Statistik (0, 6, dst) agar terang */
+.stat-card .num {
+  color: var(--text) !important; 
+}
+
+/* 3. Tombol "Upload Karya" jadi warna putih/abu terang dengan teks gelap */
+.btn-secondary {
+  background: var(--light) !important; 
+  color: var(--dark) !important; 
+  border: 1px solid var(--light) !important;
+}
+.btn-secondary:hover {
+  background: var(--gray) !important;
+}
+
+/* 4. Desain Ulang Footer Agar Terlihat Seperti Website Profesional */
+.site-footer {
+  background-color: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 40px 0 24px;
+  margin-top: 60px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.footer-top {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+.footer-brand h3 {
+  color: var(--text) !important;
+  margin: 0 0 8px;
+  font-size: 1.4rem;
+  font-family: var(--font-head);
+}
+.footer-brand p {
+  max-width: 400px;
+  margin: 0;
+  line-height: 1.5;
+}
+.footer-links {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.footer-links a {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.footer-links a:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.footer-bottom {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+.footer-bottom p {
+  margin: 0;
+}
+
+/* Tampilan Footer untuk Laptop (Menyamping) */
+@media(min-width: 768px) {
+  .footer-top {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .footer-bottom {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+                                 }
