@@ -14,6 +14,17 @@
   <h1>Ranking Karya</h1>
   <p class="text-muted">Peringkat berdasarkan rata-rata nilai guru. Nilai siswa ditampilkan terpisah.</p>
   <div id="content"><div class="empty">Memuat...</div></div>
+  
+  <!-- MODAL ULASAN -->
+  <div id="modalUlasan" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="flex-between mb-2">
+        <h3 id="modalTitle" style="margin:0">Ulasan</h3>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('modalUlasan').classList.add('hidden')">✕ Tutup</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
 </div>
 </main>
 
@@ -22,28 +33,85 @@
 <script src="js/supabase.js"></script>
 <script src="js/nav.js"></script>
 <script>
+// Variabel global untuk menyimpan semua data ulasan
+let allAssessments = [];
+
+// Fungsi untuk membuka pop-up detail ulasan
+window.bukaDetail = (posterId, judul) => {
+  document.getElementById('modalTitle').textContent = 'Ulasan: ' + judul;
+  const list = allAssessments.filter(a => a.poster_id === posterId);
+  
+  if (!list.length) {
+    document.getElementById('modalBody').innerHTML = '<div class="empty">Belum ada ulasan untuk poster ini.</div>';
+  } else {
+    // Urutkan: Guru ditaruh paling atas, baru siswa
+    list.sort((a,b) => (a.reviewer_type === 'guru' ? -1 : 1));
+    
+    document.getElementById('modalBody').innerHTML = list.map(a => {
+      const nama = a.reviewer_type === 'guru' ? (a.profiles?.full_name || 'Guru') : a.reviewer_name;
+      const kelas = a.reviewer_type === 'siswa' ? ` (${a.reviewer_kelas})` : '';
+      const badgeColor = a.reviewer_type === 'guru' ? 'background:var(--primary);color:white' : 'background:var(--border);color:var(--text)';
+      
+      return `
+      <div class="review-card">
+        <div class="flex-between mb-1">
+          <b>${esc(nama)}${esc(kelas)}</b>
+          <span class="badge" style="${badgeColor}">${a.reviewer_type.toUpperCase()}</span>
+        </div>
+        <div style="font-size:.85rem; color:var(--text-muted);">
+          Memberikan Nilai: <b style="color:var(--text); font-size:1rem;">${Number(a.nilai).toFixed(0)}</b> / 100
+        </div>
+        <p>"${esc(a.kritik_saran || 'Tidak meninggalkan pesan.')}"</p>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('modalUlasan').classList.remove('hidden');
+};
+
 (async () => {
   const { data: settings } = await sb.from('event_settings').select('ranking_published').eq('id',1).single();
   if (!settings?.ranking_published) {
     document.getElementById('content').innerHTML = '<div class="alert alert-info">Ranking belum dipublikasikan oleh panitia. Cek lagi nanti setelah penilaian selesai.</div>';
     return;
   }
-  const { data: posters } = await sb.from('posters').select('id,kode,judul,image_url,participants(nama,kelas)').eq('status','published');
-  // Rata-rata per poster dari view poster_scores (aman dibaca publik)
-  const { data: scores } = await sb.from('poster_scores').select('poster_id,jumlah_guru,rata_guru,jumlah_siswa,rata_siswa');
-  const map = {};
-  (scores||[]).forEach(s => { map[s.poster_id] = s; });
-  const rows = (posters||[]).filter(p => map[p.id]).map(p => ({
-    ...p,
-    countGuru: map[p.id].jumlah_guru, countSiswa: map[p.id].jumlah_siswa,
-    avgGuru: map[p.id].rata_guru === null ? null : Number(map[p.id].rata_guru),
-    avgSiswa: map[p.id].rata_siswa === null ? null : Number(map[p.id].rata_siswa)
-  })).sort((a,b) => (b.avgGuru ?? -1) - (a.avgGuru ?? -1) || (b.avgSiswa ?? -1) - (a.avgSiswa ?? -1)); // urut nilai guru
 
+  // 1. Ambil data semua poster
+  const { data: posters } = await sb.from('posters').select('id,kode,judul,image_url,participants(nama,kelas)').eq('status','published');
+  
+  // 2. Ambil data semua penilaian (termasuk kritik dan nama siswa)
+  const { data: assessments } = await sb.from('assessments').select(`
+    poster_id, nilai, reviewer_type, reviewer_name, reviewer_kelas, kritik_saran,
+    profiles:judge_id(full_name)
+  `);
+  allAssessments = assessments || [];
+
+  // 3. Kelompokkan nilai berdasarkan poster_id
+  const map = {};
+  allAssessments.forEach(a => { 
+    if(!map[a.poster_id]) map[a.poster_id] = {guru:[], siswa:[]};
+    if(a.reviewer_type === 'guru') map[a.poster_id].guru.push(Number(a.nilai));
+    else map[a.poster_id].siswa.push(Number(a.nilai));
+  });
+
+  // 4. Hitung rata-rata
+  const rows = (posters||[]).map(p => {
+    const g = map[p.id]?.guru || [];
+    const s = map[p.id]?.siswa || [];
+    return {
+      ...p, 
+      countGuru: g.length, countSiswa: s.length,
+      avgGuru: g.length ? g.reduce((a,b)=>a+b,0)/g.length : null,
+      avgSiswa: s.length ? s.reduce((a,b)=>a+b,0)/s.length : null
+    };
+  }).filter(r => r.countGuru > 0 || r.countSiswa > 0)
+    .sort((a,b) => (b.avgGuru ?? -1) - (a.avgGuru ?? -1) || (b.avgSiswa ?? -1) - (a.avgSiswa ?? -1));
+
+  // 5. Tampilkan ke dalam tabel
   if (!rows.length) { document.getElementById('content').innerHTML = '<div class="empty">Belum ada penilaian.</div>'; return; }
+  
   document.getElementById('content').innerHTML = `
     <div class="table-scroll"><table class="rank-table">
-      <thead><tr><th>#</th><th>Kode</th><th>Judul</th><th>Pembuat</th><th>Kelas</th><th>Nilai Guru</th><th>Nilai Siswa</th></tr></thead>
+      <thead><tr><th>#</th><th>Kode</th><th>Judul</th><th>Pembuat</th><th>Kelas</th><th>Nilai Guru</th><th>Nilai Siswa</th><th>Aksi</th></tr></thead>
       <tbody>${rows.map((r,i) => `
         <tr class="${i===0?'top-1':''}">
           <td class="rank-num">${i+1}</td>
@@ -53,6 +121,7 @@
           <td>${esc(r.participants?.kelas||'')}</td>
           <td><b style="color:var(--primary);font-size:1.1rem">${r.avgGuru === null ? '—' : r.avgGuru.toFixed(1)}</b><br><small class="text-muted">${r.countGuru} guru</small></td>
           <td><b style="color:var(--accent);font-size:1.1rem">${r.avgSiswa === null ? '—' : r.avgSiswa.toFixed(1)}</b><br><small class="text-muted">${r.countSiswa} siswa</small></td>
+          <td><button class="btn btn-outline btn-sm" onclick="bukaDetail('${r.id}', '${esc(r.judul)}')">💬 Ulasan</button></td>
         </tr>`).join('')}</tbody>
     </table></div>`;
 })();
