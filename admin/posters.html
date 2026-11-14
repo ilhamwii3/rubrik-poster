@@ -69,6 +69,7 @@ window.toggleForm = () => {
   c.classList.toggle('hidden');
   if (c.classList.contains('hidden')) resetForm();
 };
+
 const resetForm = () => {
   editing = null; fileBlob = null;
   ['editId','nama','kelas','judul','deskripsi','tujuan','informasi','sumber'].forEach(id => document.getElementById(id).value = '');
@@ -175,18 +176,39 @@ window.hapusPoster = async (id) => {
 };
 
 const loadPosters = async () => {
-  // Ambil semua poster, urutkan yang 'pending' dulu
   const { data, error } = await sb.from('posters')
     .select('*, participants(nama,kelas)')
-    .order('status', { ascending: true }) // 'pending' di atas 'published'
+    .order('status', { ascending: true }) 
     .order('created_at', { ascending: false });
     
   if (error) { document.getElementById('list').innerHTML = '<div class="empty">Gagal memuat.</div>'; return; }
   allPosters = data || [];
   const list = document.getElementById('list');
   if (!allPosters.length) { list.innerHTML = '<div class="empty">Belum ada poster.</div>'; return; }
+
+  // --- LOGIKA DETEKSI POSTER GANDA (Berdasarkan Nama + Kelas) ---
+  const countMap = {};
+  allPosters.forEach(p => {
+    const key = (p.participants?.nama || '').trim().toLowerCase() + '|' + (p.participants?.kelas || '').trim().toLowerCase();
+    if (!countMap[key]) countMap[key] = [];
+    countMap[key].push(p.id);
+  });
+
+  allPosters.forEach(p => {
+    const key = (p.participants?.nama || '').trim().toLowerCase() + '|' + (p.participants?.kelas || '').trim().toLowerCase();
+    p.duplicateCount = countMap[key].length;
+  });
+
+  const totalDuplicates = Object.values(countMap).filter(ids => ids.length > 1).length;
   
-  list.innerHTML = '<div class="qr-grid">' + allPosters.map(p => {
+  let alertHtml = '';
+  if (totalDuplicates > 0) {
+    alertHtml = `<div class="alert alert-error mb-2" style="display:block;border-color:#b4531a;background:rgba(180,83,26,0.1);color:#b4531a;font-weight:600;">
+      ⚠️ Ditemukan ${totalDuplicates} siswa yang mengunggah lebih dari 1 poster (Nama & Kelas sama). Cek label kuning di bawah.
+    </div>`;
+  }
+
+  const cardsHtml = allPosters.map(p => {
     let svg = '';
     try {
       const url = location.origin + (location.pathname.includes('/admin/') ? '/detail.html' : 'detail.html') + '?kode=' + encodeURIComponent(p.kode);
@@ -194,13 +216,17 @@ const loadPosters = async () => {
       svg = q.createSvgTag(3);
     } catch(e) {}
     
-    // Jika status pending, tampilkan tombol Setujui
     const isPending = p.status === 'pending';
-    const badge = isPending ? '<span class="badge" style="background:#b91c1c;color:#fff;margin-bottom:5px">Menunggu Persetujuan</span>' : '';
+    const isDuplicate = p.duplicateCount > 1;
+    
+    let statusBadge = '';
+    if (isPending) statusBadge += '<span class="badge" style="background:#b91c1c;color:#fff;margin-bottom:5px;display:block;">Menunggu Persetujuan</span>';
+    if (isDuplicate) statusBadge += `<span class="badge" style="background:#d97706;color:#fff;margin-bottom:5px;display:block;">⚠️ Upload Ganda (${p.duplicateCount}x)</span>`;
+
     const approveBtn = isPending ? `<button class="btn btn-sm btn-primary" onclick="setujuiPoster('${p.id}')">Setujui</button>` : '';
 
-    return `<div class="qr-item" style="${isPending ? 'border-color: #b91c1c; border-style: solid;' : ''}">
-      ${badge}
+    return `<div class="qr-item" style="${isPending || isDuplicate ? 'border: 2px solid #b91c1c;' : ''}">
+      ${statusBadge}
       <div style="position:relative">${svg}
         <div style="margin-top:4px"><b>${esc(p.kode)}</b></div>
       </div>
@@ -211,7 +237,9 @@ const loadPosters = async () => {
         <button class="btn btn-sm btn-danger" onclick="hapusPoster('${p.id}')">Hapus</button>
       </div>
     </div>`;
-  }).join('') + '</div>';
+  }).join('');
+
+  list.innerHTML = alertHtml + '<div class="qr-grid">' + cardsHtml + '</div>';
 };
 
 // Fungsi untuk menyetujui poster
