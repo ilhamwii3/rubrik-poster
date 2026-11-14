@@ -112,3 +112,24 @@ video{width:100%;border-radius:var(--radius);background:#000;max-height:420px;ob
     font-size: 0.92rem;
   }
 }
+
+/* --- MODAL POP-UP ULASAN --- */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6); z-index: 999;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.modal-overlay.hidden { display: none !important; }
+.modal-content {
+  background: var(--surface); width: 100%; max-width: 500px; border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 20px;
+  max-height: 85vh; display: flex; flex-direction: column;
+}
+.modal-body {
+  overflow-y: auto; padding-right: 5px;
+}
+.review-card {
+  padding: 12px; margin-bottom: 12px; background: var(--surface-2); 
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+}
+.review-card p { margin: 8px 0 0; font-style: italic; font-size: 0.9rem; }
