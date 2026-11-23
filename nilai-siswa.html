@@ -29,7 +29,8 @@ const RUBRIK = [
   ['Kreativitas, desain dan tata letak', 'Visual menarik, komposisi seimbang, mudah dibaca.'],
   ['Kerapian', 'Bersih, rapi, pigura dan hasil cetak baik.']
 ];
-let scores = [0,0,0,0], curPoster = null, currentRole = 'siswa'; // Default siswa
+let scores = [0,0,0,0], curPoster = null, currentRole = 'siswa';
+let listGuru = []; // Menyimpan daftar nama guru
 
 function draw() {
   const total = scores.reduce((a,b)=>a+b,0);
@@ -48,17 +49,15 @@ function draw() {
 window.setScore = (i, n) => { scores[i] = n; draw(); };
 
 window.setRole = async (role) => {
-  // --- SATPAM PASSWORD DATABASE UNTUK GURU ---
   if (role === 'guru') {
     const pw = prompt("Masukkan Password Khusus Guru:");
-    if (pw === null) return; // Jika klik Cancel, batal
+    if (pw === null) return; // Batal
 
     const btn = document.getElementById('btn-role-guru');
     const originalText = btn.textContent;
     btn.textContent = 'Mengecek...';
     btn.disabled = true;
 
-    // Tanya database: Apakah password ini benar?
     const { data, error } = await sb.rpc('check_guru_password', { input_pw: pw });
 
     btn.textContent = originalText;
@@ -66,37 +65,43 @@ window.setRole = async (role) => {
 
     if (error || !data) {
       toast('Password salah! Akses ditolak.', 'error');
-      return; // Hentikan proses
+      return;
     }
   }
-  // -------------------------------------------
 
   currentRole = role;
   document.getElementById('btn-role-guru').classList.toggle('on', role === 'guru');
   document.getElementById('btn-role-siswa').classList.toggle('on', role === 'siswa');
   
-  // Sembunyikan/tampilkan input kelas
-  const kelasGroup = document.getElementById('kelas-group');
+  // Tampilkan form yang sesuai
   if(role === 'guru') {
-    kelasGroup.style.display = 'none';
-    document.getElementById('kelas').value = ''; // reset kelas
+    document.getElementById('form-siswa').style.display = 'none';
+    document.getElementById('form-guru').style.display = 'block';
   } else {
-    kelasGroup.style.display = 'block';
+    document.getElementById('form-siswa').style.display = 'block';
+    document.getElementById('form-guru').style.display = 'none';
   }
 };
 
 window.simpanNilai = async () => {
-  const namaInput = document.getElementById('nama').value.trim().replace(/\s+/g, ' ');
-  const kelasInput = document.getElementById('kelas').value;
+  let namaInput = '';
+  let kelasInput = '';
+
+  if (currentRole === 'siswa') {
+    namaInput = document.getElementById('nama').value.trim().replace(/\s+/g, ' ');
+    kelasInput = document.getElementById('kelas').value;
+    if (!namaInput || !kelasInput || kelasInput === "") { toast('Isi nama dan pilih kelas dulu ya.', 'error'); return; }
+  } else {
+    namaInput = document.getElementById('guru-nama').value;
+    if (!namaInput) { toast('Pilih nama kamu dari daftar.', 'error'); return; }
+  }
   
-  if (!namaInput) { toast('Isi nama kamu dulu ya.', 'error'); return; }
-  if (currentRole === 'siswa' && (!kelasInput || kelasInput === "")) { toast('Pilih kelas kamu dulu.', 'error'); return; }
   if (scores.includes(0)) { toast('Semua aspek harus dinilai (1–5).', 'error'); return; }
   
   const btn = document.querySelector('button[onclick="simpanNilai()"]');
   btn.disabled = true; btn.textContent = 'Mengecek data...';
 
-  // 1. Cek apakah ini menilai poster sendiri (khusus siswa)
+  // Cegah menilai poster sendiri (khusus siswa)
   if (currentRole === 'siswa') {
     const pembuatNama = (curPoster.participants?.nama || '').trim().toLowerCase();
     const pembuatKelas = (curPoster.participants?.kelas || '').trim().toLowerCase();
@@ -106,16 +111,7 @@ window.simpanNilai = async () => {
     }
   }
 
-  // 2. VALIDASI NAMA GURU (Jika milih role Guru)
-  if (currentRole === 'guru') {
-    const { data: guru } = await sb.from('teachers').select('id').ilike('nama', namaInput).maybeSingle();
-    if (!guru) {
-      toast('Nama tidak terdaftar sebagai Guru. Hubungi admin jika ini sebuah kesalahan.', 'error');
-      btn.disabled = false; btn.textContent = 'Kirim Penilaian'; return;
-    }
-  }
-
-  // 3. CEK DATABASE (Cegah spam)
+  // Cek Database (Cegah spam)
   let query = sb.from('assessments')
     .select('id')
     .eq('poster_id', curPoster.id)
@@ -125,16 +121,15 @@ window.simpanNilai = async () => {
   if (currentRole === 'siswa') query = query.ilike('reviewer_kelas', kelasInput);
   
   const { data: existing } = await query.maybeSingle();
-
   if (existing) {
-    toast('Kamu sudah pernah menilai poster ini!', 'error');
+    toast('Nama ini sudah pernah menilai poster ini!', 'error');
     btn.disabled = false; btn.textContent = 'Kirim Penilaian'; return;
   }
 
   btn.textContent = 'Menyimpan...';
   const payload = {
     poster_id: curPoster.id,
-    judge_id: null, // Tidak pakai ID auth karena tidak login
+    judge_id: null,
     reviewer_type: currentRole,
     reviewer_name: namaInput,
     reviewer_kelas: currentRole === 'siswa' ? kelasInput : null,
@@ -142,7 +137,6 @@ window.simpanNilai = async () => {
     kritik_saran: document.getElementById('kritik').value.trim() || null
   };
   
-  // 4. Eksekusi Simpan
   const { error } = await sb.from('assessments').insert(payload);
   
   if (error) { 
@@ -156,6 +150,10 @@ window.simpanNilai = async () => {
 };
 
 (async () => {
+  // Ambil daftar guru dari database
+  const { data: teachers } = await sb.from('teachers').select('nama').order('nama');
+  if(teachers) listGuru = teachers;
+
   const kode = new URLSearchParams(location.search).get('kode');
   if (!kode) { document.getElementById('content').innerHTML = '<div class="empty">Kode poster tidak ada.</div>'; return; }
   const { data: p, error } = await sb.from('posters').select('*, participants(nama,kelas)').eq('kode', kode).single();
@@ -180,31 +178,43 @@ window.simpanNilai = async () => {
         <button id="btn-role-guru" onclick="setRole('guru')">👨‍🏫 Guru / Penilai</button>
       </div>
 
-      <div class="flex gap-2" style="flex-wrap:wrap">
-        <div style="flex:1;min-width:150px">
-          <label>Nama Lengkap</label>
-          <input id="nama" placeholder="Ketik nama asli...">
+      <!-- FORM UNTUK SISWA -->
+      <div id="form-siswa">
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <div style="flex:1;min-width:150px">
+            <label>Nama Lengkap</label>
+            <input id="nama" placeholder="Ketik nama asli...">
+          </div>
+          <div style="flex:1;min-width:150px">
+            <label>Kelas</label>
+            <select id="kelas">
+              <option value="" disabled selected>-- Pilih --</option>
+              ${[
+                'X RPL 1','X RPL 2','X RPL 3', 'XI RPL 1','XI RPL 2','XI RPL 3', 'XII RPL 1','XII RPL 2','XII RPL 3',
+                'X APHP 1','X APHP 2', 'XI APHP 1','XI APHP 2', 'XII APHP 1','XII APHP 2',
+                'X LPS 1','X LPS 2', 'XI LPS 1','XI LPS 2', 'XII LPS 1','XII LPS 2',
+                'X DKV 1','X DKV 2', 'XI DKV 1','XI DKV 2', 'XII DKV 1','XII DKV 2',
+                'X KULINER 1','X KULINER 2','X KULINER 3', 
+                'XI KULINER 1','XI KULINER 2','XI KULINER 3', 
+                'XII KULINER 1','XII KULINER 2','XII KULINER 3'
+              ].map(k => `<option value="${k}">${k}</option>`).join('')}
+            </select>
+          </div>
         </div>
-        <div id="kelas-group" style="flex:1;min-width:150px">
-          <label>Kelas</label>
-          <select id="kelas">
-            <option value="" disabled selected>-- Pilih --</option>
-            ${[
-              'X RPL 1','X RPL 2','X RPL 3', 'XI RPL 1','XI RPL 2','XI RPL 3', 'XII RPL 1','XII RPL 2','XII RPL 3',
-              'X APHP 1','X APHP 2', 'XI APHP 1','XI APHP 2', 'XII APHP 1','XII APHP 2',
-              'X LPS 1','X LPS 2', 'XI LPS 1','XI LPS 2', 'XII LPS 1','XII LPS 2',
-              'X DKV 1','X DKV 2', 'XI DKV 1','XI DKV 2', 'XII DKV 1','XII DKV 2',
-              'X KULINER 1','X KULINER 2','X KULINER 3', 
-              'XI KULINER 1','XI KULINER 2','XI KULINER 3', 
-              'XII KULINER 1','XII KULINER 2','XII KULINER 3'
-            ].map(k => `<option value="${k}">${k}</option>`).join('')}
-          </select>
-        </div>
+      </div>
+
+      <!-- FORM UNTUK GURU -->
+      <div id="form-guru" style="display:none;">
+        <label>Pilih Nama Kamu</label>
+        <select id="guru-nama">
+          <option value="" disabled selected>-- Pilih Nama Guru --</option>
+          ${listGuru.map(g => `<option value="${g.nama}">${g.nama}</option>`).join('')}
+        </select>
       </div>
 
       <div id="crits" class="mt-2"></div>
       <label>Kritik & saran (opsional)</label>
-      <textarea id="kritik" placeholder="Tambahkan catatan untuk siswa..."></textarea>
+      <textarea id="kritik" placeholder="Tambahkan catatan..."></textarea>
       
       <div class="total-display">
         <div><div class="sub">Skor</div><div class="big"><span id="total">0</span><span class="sub">/20</span></div></div>
