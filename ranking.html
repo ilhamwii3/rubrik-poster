@@ -13,6 +13,12 @@
 <div class="container">
   <h1>Ranking Karya</h1>
   <p class="text-muted">Peringkat berdasarkan rata-rata nilai guru. Nilai siswa ditampilkan terpisah.</p>
+  
+  <!-- KOLOM PENCARIAN -->
+  <div class="card mb-3" style="padding: 12px;">
+    <input type="text" id="searchInput" placeholder="🔍 Cari nama siswa, kelas, atau judul poster..." style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-size: 0.95rem;">
+  </div>
+
   <div id="content"><div class="empty">Memuat...</div></div>
   
   <!-- MODAL ULASAN -->
@@ -33,10 +39,9 @@
 <script src="js/supabase.js"></script>
 <script src="js/nav.js"></script>
 <script>
-// Variabel global untuk menyimpan semua data ulasan
 let allAssessments = [];
+let allRankingData = [];
 
-// Fungsi untuk membuka pop-up detail ulasan
 window.bukaDetail = (posterId, judul) => {
   document.getElementById('modalTitle').textContent = 'Ulasan: ' + judul;
   const list = allAssessments.filter(a => a.poster_id === posterId);
@@ -44,7 +49,6 @@ window.bukaDetail = (posterId, judul) => {
   if (!list.length) {
     document.getElementById('modalBody').innerHTML = '<div class="empty">Belum ada ulasan untuk poster ini.</div>';
   } else {
-    // Urutkan: Guru ditaruh paling atas, baru siswa
     list.sort((a,b) => (a.reviewer_type === 'guru' ? -1 : 1));
     
     document.getElementById('modalBody').innerHTML = list.map(a => {
@@ -68,6 +72,31 @@ window.bukaDetail = (posterId, judul) => {
   document.getElementById('modalUlasan').classList.remove('hidden');
 };
 
+function renderTable(data) {
+  const content = document.getElementById('content');
+  
+  if (!data.length) { 
+    content.innerHTML = '<div class="empty">Tidak ada data yang cocok dengan pencarian.</div>'; 
+    return; 
+  }
+  
+  content.innerHTML = `
+    <div class="table-scroll"><table class="rank-table">
+      <thead><tr><th>#</th><th>Kode</th><th>Judul</th><th>Pembuat</th><th>Kelas</th><th>Nilai Guru</th><th>Nilai Siswa</th><th>Aksi</th></tr></thead>
+      <tbody>${data.map((r,i) => `
+        <tr class="${i===0 && data.length === allRankingData.length ? 'top-1' : ''}">
+          <td class="rank-num">${i+1}</td>
+          <td><a href="detail.html?kode=${encodeURIComponent(r.kode)}">${esc(r.kode)}</a></td>
+          <td><b>${esc(r.judul)}</b></td>
+          <td>${esc(r.participants?.nama||'—')}</td>
+          <td>${esc(r.participants?.kelas||'')}</td>
+          <td><b style="color:var(--primary);font-size:1.1rem">${r.avgGuru === null ? '—' : r.avgGuru.toFixed(1)}</b><br><small class="text-muted">${r.countGuru} guru</small></td>
+          <td><b style="color:var(--accent);font-size:1.1rem">${r.avgSiswa === null ? '—' : r.avgSiswa.toFixed(1)}</b><br><small class="text-muted">${r.countSiswa} siswa</small></td>
+          <td><button class="btn btn-outline btn-sm" onclick="bukaDetail('${r.id}', '${esc(r.judul)}')">💬 Ulasan</button></td>
+        </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
 (async () => {
   const { data: settings } = await sb.from('event_settings').select('ranking_published').eq('id',1).single();
   if (!settings?.ranking_published) {
@@ -75,17 +104,16 @@ window.bukaDetail = (posterId, judul) => {
     return;
   }
 
-  // 1. Ambil data semua poster
   const { data: posters } = await sb.from('posters').select('id,kode,judul,image_url,participants(nama,kelas)').eq('status','published');
   
-  // 2. Ambil data semua penilaian (termasuk kritik dan nama siswa)
+  // KODE ASLI TANPA LIMIT
   const { data: assessments } = await sb.from('assessments').select(`
     poster_id, nilai, reviewer_type, reviewer_name, reviewer_kelas, kritik_saran,
     profiles:judge_id(full_name)
   `);
+  
   allAssessments = assessments || [];
 
-  // 3. Kelompokkan nilai berdasarkan poster_id
   const map = {};
   allAssessments.forEach(a => { 
     if(!map[a.poster_id]) map[a.poster_id] = {guru:[], siswa:[]};
@@ -93,7 +121,6 @@ window.bukaDetail = (posterId, judul) => {
     else map[a.poster_id].siswa.push(Number(a.nilai));
   });
 
-  // 4. Hitung rata-rata
   const rows = (posters||[]).map(p => {
     const g = map[p.id]?.guru || [];
     const s = map[p.id]?.siswa || [];
@@ -106,25 +133,27 @@ window.bukaDetail = (posterId, judul) => {
   }).filter(r => r.countGuru > 0 || r.countSiswa > 0)
     .sort((a,b) => (b.avgGuru ?? -1) - (a.avgGuru ?? -1) || (b.avgSiswa ?? -1) - (a.avgSiswa ?? -1));
 
-  // 5. Tampilkan ke dalam tabel
   if (!rows.length) { document.getElementById('content').innerHTML = '<div class="empty">Belum ada penilaian.</div>'; return; }
   
-  document.getElementById('content').innerHTML = `
-    <div class="table-scroll"><table class="rank-table">
-      <thead><tr><th>#</th><th>Kode</th><th>Judul</th><th>Pembuat</th><th>Kelas</th><th>Nilai Guru</th><th>Nilai Siswa</th><th>Aksi</th></tr></thead>
-      <tbody>${rows.map((r,i) => `
-        <tr class="${i===0?'top-1':''}">
-          <td class="rank-num">${i+1}</td>
-          <td><a href="detail.html?kode=${encodeURIComponent(r.kode)}">${esc(r.kode)}</a></td>
-          <td><b>${esc(r.judul)}</b></td>
-          <td>${esc(r.participants?.nama||'—')}</td>
-          <td>${esc(r.participants?.kelas||'')}</td>
-          <td><b style="color:var(--primary);font-size:1.1rem">${r.avgGuru === null ? '—' : r.avgGuru.toFixed(1)}</b><br><small class="text-muted">${r.countGuru} guru</small></td>
-          <td><b style="color:var(--accent);font-size:1.1rem">${r.avgSiswa === null ? '—' : r.avgSiswa.toFixed(1)}</b><br><small class="text-muted">${r.countSiswa} siswa</small></td>
-          <td><button class="btn btn-outline btn-sm" onclick="bukaDetail('${r.id}', '${esc(r.judul)}')">💬 Ulasan</button></td>
-        </tr>`).join('')}</tbody>
-    </table></div>`;
+  allRankingData = rows;
+  renderTable(allRankingData);
+
+  // FITUR PENCARIAN
+  document.getElementById('searchInput').addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase();
+    
+    const filtered = allRankingData.filter(r => {
+      const nama = (r.participants?.nama || '').toLowerCase();
+      const kelas = (r.participants?.kelas || '').toLowerCase();
+      const judul = (r.judul || '').toLowerCase();
+      const kode = (r.kode || '').toLowerCase();
+      
+      return nama.includes(query) || kelas.includes(query) || judul.includes(query) || kode.includes(query);
+    });
+    
+    renderTable(filtered);
+  });
 })();
 </script>
 </body>
-</html>
+    </html>
