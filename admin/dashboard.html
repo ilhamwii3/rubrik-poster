@@ -19,14 +19,25 @@
     </div>
   </div>
 
-  <!-- TOMBOL KONTROL PENILAIAN -->
-  <div class="card mb-3" id="controlCard" style="border: 2px solid var(--border);">
+  <!-- PANEL KONTROL UPLOAD -->
+  <div class="card mb-2" id="controlUploadCard" style="border: 2px solid var(--border);">
     <div class="flex-between" style="align-items: center; flex-wrap: wrap; gap: 10px;">
       <div>
-        <h3 style="margin: 0;" id="statusText">Status Penilaian: Memuat...</h3>
-        <p class="text-muted" style="margin: 5px 0 0 0; font-size: 0.9rem;" id="statusDesc"></p>
+        <h3 style="margin: 0;" id="uploadStatusText">Status Upload Poster: Memuat...</h3>
+        <p class="text-muted" style="margin: 5px 0 0 0; font-size: 0.9rem;" id="uploadStatusDesc"></p>
       </div>
-      <button class="btn" id="toggleBtn" onclick="toggleAssessment()" disabled>Memuat...</button>
+      <button class="btn" id="toggleUploadBtn" onclick="toggleUpload()" disabled>Memuat...</button>
+    </div>
+  </div>
+
+  <!-- PANEL KONTROL PENILAIAN -->
+  <div class="card mb-3" id="controlAssessCard" style="border: 2px solid var(--border);">
+    <div class="flex-between" style="align-items: center; flex-wrap: wrap; gap: 10px;">
+      <div>
+        <h3 style="margin: 0;" id="assessStatusText">Status Penilaian: Memuat...</h3>
+        <p class="text-muted" style="margin: 5px 0 0 0; font-size: 0.9rem;" id="assessStatusDesc"></p>
+      </div>
+      <button class="btn" id="toggleAssessBtn" onclick="toggleAssessment()" disabled>Memuat...</button>
     </div>
   </div>
 
@@ -44,53 +55,79 @@
 <script src="../js/nav.js"></script>
 <script>
 let isAssessmentOpen = true;
+let isUploadOpen = true;
 
+// Fungsi Toggle Penilaian
 window.toggleAssessment = async () => {
   const newState = !isAssessmentOpen;
   const action = newState ? 'MEMBUKA' : 'MENUTUP';
-  
   if (!confirm(`Yakin ingin ${action} penilaian?`)) return;
 
-  const btn = document.getElementById('toggleBtn');
-  btn.disabled = true;
-  btn.textContent = 'Menyimpan...';
+  const btn = document.getElementById('toggleAssessBtn');
+  btn.disabled = true; btn.textContent = 'Menyimpan...';
 
   const { error } = await sb.from('event_settings').update({ is_assessment_open: newState }).eq('id', 1);
   
-  if (error) {
-    toast('Gagal mengubah status: ' + error.message, 'error');
-    btn.disabled = false;
-    loadControlStatus(); // balikin tampilan
-    return;
-  }
-
+  if (error) { toast('Gagal: ' + error.message, 'error'); loadControlStatus(); return; }
   toast(`Penilaian berhasil di${action.toLowerCase()}!`, 'success');
   loadControlStatus();
 };
 
-async function loadControlStatus() {
-  const { data } = await sb.from('event_settings').select('is_assessment_open').eq('id', 1).single();
-  isAssessmentOpen = data?.is_assessment_open ?? true;
+// Fungsi Toggle Upload
+window.toggleUpload = async () => {
+  const newState = !isUploadOpen;
+  const action = newState ? 'MEMBUKA' : 'MENUTUP';
+  if (!confirm(`Yakin ingin ${action} upload poster?`)) return;
 
-  const statusText = document.getElementById('statusText');
-  const statusDesc = document.getElementById('statusDesc');
-  const toggleBtn = document.getElementById('toggleBtn');
-  const card = document.getElementById('controlCard');
+  const btn = document.getElementById('toggleUploadBtn');
+  btn.disabled = true; btn.textContent = 'Menyimpan...';
+
+  const { error } = await sb.from('event_settings').update({ is_upload_open: newState }).eq('id', 1);
+  
+  if (error) { toast('Gagal: ' + error.message, 'error'); loadControlStatus(); return; }
+  toast(`Upload poster berhasil di${action.toLowerCase()}!`, 'success');
+  loadControlStatus();
+};
+
+async function loadControlStatus() {
+  const { data } = await sb.from('event_settings').select('is_assessment_open, is_upload_open').eq('id', 1).single();
+  
+  // Set Status Penilaian
+  isAssessmentOpen = data?.is_assessment_open ?? true;
+  const assessText = document.getElementById('assessStatusText');
+  const assessDesc = document.getElementById('assessStatusDesc');
+  const btnAssess = document.getElementById('toggleAssessBtn');
+  const cardAssess = document.getElementById('controlAssessCard');
 
   if (isAssessmentOpen) {
-    statusText.innerHTML = '🟢 Status Penilaian: <span style="color:#10b981">DIBUKA</span>';
-    statusDesc.textContent = 'Guru dan siswa saat ini bisa mengirimkan nilai.';
-    toggleBtn.className = 'btn btn-danger';
-    toggleBtn.textContent = '🔒 Tutup Penilaian';
-    toggleBtn.disabled = false;
-    card.style.borderColor = '#10b981';
+    assessText.innerHTML = '🟢 Penilaian: <span style="color:#10b981">DIBUKA</span>';
+    assessDesc.textContent = 'Guru dan siswa bisa mengirimkan nilai.';
+    btnAssess.className = 'btn btn-danger'; btnAssess.textContent = '🔒 Tutup Penilaian'; btnAssess.disabled = false;
+    cardAssess.style.borderColor = '#10b981';
   } else {
-    statusText.innerHTML = '🔴 Status Penilaian: <span style="color:#ef4444">DITUTUP</span>';
-    statusDesc.textContent = 'Form penilaian dikunci. Tidak ada yang bisa mengirim nilai.';
-    toggleBtn.className = 'btn btn-primary';
-    toggleBtn.textContent = '🔓 Buka Penilaian';
-    toggleBtn.disabled = false;
-    card.style.borderColor = '#ef4444';
+    assessText.innerHTML = '🔴 Penilaian: <span style="color:#ef4444">DITUTUP</span>';
+    assessDesc.textContent = 'Form penilaian dikunci.';
+    btnAssess.className = 'btn btn-primary'; btnAssess.textContent = '🔓 Buka Penilaian'; btnAssess.disabled = false;
+    cardAssess.style.borderColor = '#ef4444';
+  }
+
+  // Set Status Upload
+  isUploadOpen = data?.is_upload_open ?? true;
+  const uploadText = document.getElementById('uploadStatusText');
+  const uploadDesc = document.getElementById('uploadStatusDesc');
+  const btnUpload = document.getElementById('toggleUploadBtn');
+  const cardUpload = document.getElementById('controlUploadCard');
+
+  if (isUploadOpen) {
+    uploadText.innerHTML = '🟢 Upload Poster: <span style="color:#10b981">DIBUKA</span>';
+    uploadDesc.textContent = 'Siswa bisa mengunggah karya poster baru.';
+    btnUpload.className = 'btn btn-danger'; btnUpload.textContent = '🔒 Tutup Upload'; btnUpload.disabled = false;
+    cardUpload.style.borderColor = '#10b981';
+  } else {
+    uploadText.innerHTML = '🔴 Upload Poster: <span style="color:#ef4444">DITUTUP</span>';
+    uploadDesc.textContent = 'Form unggah poster dikunci.';
+    btnUpload.className = 'btn btn-primary'; btnUpload.textContent = '🔓 Buka Upload'; btnUpload.disabled = false;
+    cardUpload.style.borderColor = '#ef4444';
   }
 }
 
@@ -99,7 +136,6 @@ async function loadControlStatus() {
   if (!auth) return;
   document.getElementById('hello').textContent = `Halo, ${auth.profile.full_name}.`;
 
-  // Load status tombol buka/tutup
   loadControlStatus();
 
   const [{ count: pCount }, { count: rCount }, { data: profiles }, { data: assess }] = await Promise.all([
