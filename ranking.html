@@ -42,9 +42,11 @@
 let allAssessments = [];
 let allRankingData = [];
 
+// Fungsi buka modal ulasan
 window.bukaDetail = (posterId, judul) => {
   document.getElementById('modalTitle').textContent = 'Ulasan: ' + judul;
-  const list = allAssessments.filter(a => a.poster_id === posterId);
+  // Pastikan tipe datanya sama (string vs angka) pakai String()
+  const list = allAssessments.filter(a => String(a.poster_id) === String(posterId));
   
   if (!list.length) {
     document.getElementById('modalBody').innerHTML = '<div class="empty">Belum ada ulasan untuk poster ini.</div>';
@@ -80,7 +82,7 @@ function renderTable(data) {
     return; 
   }
   
-  // TABEL DENGAN 3 KOLOM NILAI 
+  // PERBAIKAN: Tombol ulasan pakai data-id dan data-judul
   content.innerHTML = `
     <div class="table-scroll"><table class="rank-table">
       <thead>
@@ -120,7 +122,12 @@ function renderTable(data) {
             </b>
           </td>
           
-          <td><button class="btn btn-outline btn-sm" onclick="bukaDetail('${r.id}', '${esc(r.judul)}')">💬 Ulasan</button></td>
+          <!-- TOMBOL BARU YANG ANTI ERROR -->
+          <td>
+            <button class="btn btn-outline btn-sm btn-ulasan" data-id="${r.id}" data-judul="${esc(r.judul)}">
+              💬 Ulasan
+            </button>
+          </td>
         </tr>`).join('')}</tbody>
     </table></div>`;
 }
@@ -152,11 +159,10 @@ function renderTable(data) {
     const g = map[p.id]?.guru || [];
     const s = map[p.id]?.siswa || [];
     
-    // --- MURNI PENJUMLAHAN (AKUMULASI) ---
     const totalGuru = g.reduce((a,b)=>a+b,0);
     const totalSiswa = s.reduce((a,b)=>a+b,0);
     
-    // --- RUMUS BARU: 60% GURU + 40% SISWA ---
+    // RUMUS 60% GURU + 40% SISWA
     const nilaiAkhir = (totalGuru * 0.6) + (totalSiswa * 0.4);
 
     return {
@@ -169,17 +175,10 @@ function renderTable(data) {
     };
   }).filter(r => r.countGuru > 0 || r.countSiswa > 0)
     .sort((a, b) => {
-      // 1. Prioritas Utama: Poster yang punya nilai Guru selalu di atas yang 0 guru
       if (a.countGuru === 0 && b.countGuru > 0) return 1;
       if (b.countGuru === 0 && a.countGuru > 0) return -1;
-
-      // 2. Adu Nilai Akhir (60% Guru + 40% Siswa)
       if (b.nilaiAkhir !== a.nilaiAkhir) return b.nilaiAkhir - a.nilaiAkhir;
-
-      // 3. Kalau Nilai Akhir sama, adu Total Nilai Guru
       if (b.totalGuru !== a.totalGuru) return b.totalGuru - a.totalGuru;
-
-      // 4. Kalau masih sama, adu jumlah guru
       return b.countGuru - a.countGuru;
     });
 
@@ -201,6 +200,17 @@ function renderTable(data) {
     });
     renderTable(filtered);
   });
+
+  // EVENT LISTENER UNTUK TOMBOL ULASAN (DITARUH DI LUAR RENDER)
+  document.getElementById('content').addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-ulasan');
+    if (btn) {
+      const id = btn.getAttribute('data-id');
+      const judul = btn.getAttribute('data-judul');
+      bukaDetail(id, judul);
+    }
+  });
+
 })();
 </script>
 </body>
