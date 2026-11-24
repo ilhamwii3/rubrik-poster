@@ -12,7 +12,7 @@
 <main class="main">
 <div class="container">
   <h1>Ranking Karya</h1>
-  <p class="text-muted">Peringkat berdasarkan rata-rata nilai guru. Nilai siswa ditampilkan terpisah.</p>
+  <p class="text-muted">Peringkat berdasarkan Nilai Akhir (60% Total Nilai Guru + 40% Total Nilai Siswa).</p>
   
   <!-- KOLOM PENCARIAN -->
   <div class="card mb-3" style="padding: 12px;">
@@ -80,19 +80,46 @@ function renderTable(data) {
     return; 
   }
   
+  // TABEL DENGAN 3 KOLOM NILAI 
   content.innerHTML = `
     <div class="table-scroll"><table class="rank-table">
-      <thead><tr><th>#</th><th>Kode</th><th>Judul</th><th>Pembuat</th><th>Kelas</th><th>Nilai Guru</th><th>Nilai Siswa</th><th>Aksi</th></tr></thead>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Kode</th>
+          <th>Judul</th>
+          <th>Pembuat</th>
+          <th>Kelas</th>
+          <th>Total Nilai Guru</th>
+          <th>Total Nilai Siswa</th>
+          <th>Nilai Akhir (60/40)</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
       <tbody>${data.map((r) => `
         <tr class="${r.originalRank === 1 ? 'top-1' : ''}">
-          <!-- INI BAGIAN YANG DIUBAH: Pakai r.originalRank agar nomor aslinya tetap -->
           <td class="rank-num">${r.originalRank}</td>
           <td><a href="detail.html?kode=${encodeURIComponent(r.kode)}">${esc(r.kode)}</a></td>
           <td><b>${esc(r.judul)}</b></td>
           <td>${esc(r.participants?.nama||'—')}</td>
           <td>${esc(r.participants?.kelas||'')}</td>
-          <td><b style="color:var(--primary);font-size:1.1rem">${r.avgGuru === null ? '—' : r.avgGuru.toFixed(1)}</b><br><small class="text-muted">${r.countGuru} guru</small></td>
-          <td><b style="color:var(--accent);font-size:1.1rem">${r.avgSiswa === null ? '—' : r.avgSiswa.toFixed(1)}</b><br><small class="text-muted">${r.countSiswa} siswa</small></td>
+          
+          <td>
+            <b style="color:var(--primary);font-size:1.1rem">${r.totalGuru}</b><br>
+            <small class="text-muted">dari ${r.countGuru} guru</small>
+          </td>
+          
+          <td>
+            <b style="color:var(--accent);font-size:1.1rem">${r.totalSiswa}</b><br>
+            <small class="text-muted">dari ${r.countSiswa} siswa</small>
+          </td>
+          
+          <td>
+            <b style="color:#10b981; font-size:1.2rem; border-bottom: 2px solid #10b981; padding-bottom: 2px;">
+              ${r.nilaiAkhir.toFixed(1)}
+            </b>
+          </td>
+          
           <td><button class="btn btn-outline btn-sm" onclick="bukaDetail('${r.id}', '${esc(r.judul)}')">💬 Ulasan</button></td>
         </tr>`).join('')}</tbody>
     </table></div>`;
@@ -124,21 +151,42 @@ function renderTable(data) {
   const rows = (posters||[]).map(p => {
     const g = map[p.id]?.guru || [];
     const s = map[p.id]?.siswa || [];
+    
+    // --- MURNI PENJUMLAHAN (AKUMULASI) ---
+    const totalGuru = g.reduce((a,b)=>a+b,0);
+    const totalSiswa = s.reduce((a,b)=>a+b,0);
+    
+    // --- RUMUS BARU: 60% GURU + 40% SISWA ---
+    const nilaiAkhir = (totalGuru * 0.6) + (totalSiswa * 0.4);
+
     return {
       ...p, 
-      countGuru: g.length, countSiswa: s.length,
-      avgGuru: g.length ? g.reduce((a,b)=>a+b,0)/g.length : null,
-      avgSiswa: s.length ? s.reduce((a,b)=>a+b,0)/s.length : null
+      countGuru: g.length, 
+      countSiswa: s.length,
+      totalGuru, 
+      totalSiswa, 
+      nilaiAkhir
     };
   }).filter(r => r.countGuru > 0 || r.countSiswa > 0)
-    .sort((a,b) => (b.avgGuru ?? -1) - (a.avgGuru ?? -1) || (b.avgSiswa ?? -1) - (a.avgSiswa ?? -1));
+    .sort((a, b) => {
+      // 1. Prioritas Utama: Poster yang punya nilai Guru selalu di atas yang 0 guru
+      if (a.countGuru === 0 && b.countGuru > 0) return 1;
+      if (b.countGuru === 0 && a.countGuru > 0) return -1;
+
+      // 2. Adu Nilai Akhir (60% Guru + 40% Siswa)
+      if (b.nilaiAkhir !== a.nilaiAkhir) return b.nilaiAkhir - a.nilaiAkhir;
+
+      // 3. Kalau Nilai Akhir sama, adu Total Nilai Guru
+      if (b.totalGuru !== a.totalGuru) return b.totalGuru - a.totalGuru;
+
+      // 4. Kalau masih sama, adu jumlah guru
+      return b.countGuru - a.countGuru;
+    });
 
   if (!rows.length) { document.getElementById('content').innerHTML = '<div class="empty">Belum ada penilaian.</div>'; return; }
   
-  // Simpan peringkat asli SEBELUM difilter
   allRankingData = rows.map((r, index) => ({ ...r, originalRank: index + 1 }));
   
-  // Tampilkan semua data pertama kali
   renderTable(allRankingData);
 
   // Logika Pencarian
