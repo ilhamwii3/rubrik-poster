@@ -10,7 +10,8 @@
 <body data-root="">
 <div id="header"></div>
 <main class="main">
-<div class="container-narrow" style="max-width:640px">
+<!-- Aku kasih ID di container ini biar gampang diganti pas dikunci -->
+<div class="container-narrow" id="upload-container" style="max-width:640px">
   <h1>Upload Karya Poster</h1>
   
   <p class="text-muted">Isi data di bawah ini. Poster kamu akan tampil di galeri setelah disetujui oleh panitia.</p>
@@ -65,6 +66,23 @@
 <script>
 let fileBlob = null;
 
+// CEK STATUS BUKA/TUTUP UPLOAD SAAT HALAMAN DIMUAT
+(async () => {
+  const { data: settings } = await sb.from('event_settings').select('is_upload_open').eq('id', 1).single();
+  
+  if (settings && settings.is_upload_open === false) {
+    const container = document.getElementById('upload-container');
+    container.innerHTML = `
+      <div style="text-align:center; padding: 50px 20px; background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); margin-top: 20px;">
+        <h1 style="color:#ef4444; font-size:4rem; margin-bottom:10px;">🔒</h1>
+        <h2 style="margin-bottom:10px;">Upload Poster Ditutup</h2>
+        <p class="text-muted" style="margin-bottom:20px;">Waktu pengumpulan karya telah berakhir atau ditutup sementara oleh panitia.<br>Terima kasih atas partisipasi Anda.</p>
+        <a href="index.html" class="btn btn-primary">Kembali ke Beranda</a>
+      </div>
+    `;
+  }
+})();
+
 // Preview gambar sebelum diupload
 document.getElementById('file').onchange = async (e) => {
   const f = e.target.files[0]; if (!f) return;
@@ -90,9 +108,7 @@ window.uploadKarya = async () => {
   msg.className = 'alert mt-2'; msg.textContent = 'Memeriksa apakah kamu sudah pernah upload...';
 
   try {
-    // ====================================================================
     // SATPAM DIGITAL: CEK APAKAH NAMA + KELAS SUDAH ADA DI DATABASE
-    // ====================================================================
     const { data: existing } = await sb.from('posters')
       .select('id, participants!inner(nama, kelas)')
       .eq('participants.kelas', kelas)
@@ -105,7 +121,6 @@ window.uploadKarya = async () => {
       btn.disabled = false; btn.textContent = 'Kirim Karya';
       return; // Hentikan proses upload
     }
-    // ====================================================================
 
     msg.className = 'alert mt-2'; msg.textContent = 'Sedang mengunggah foto...';
 
