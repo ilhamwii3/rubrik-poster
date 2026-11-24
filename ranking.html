@@ -83,9 +83,10 @@ function renderTable(data) {
   content.innerHTML = `
     <div class="table-scroll"><table class="rank-table">
       <thead><tr><th>#</th><th>Kode</th><th>Judul</th><th>Pembuat</th><th>Kelas</th><th>Nilai Guru</th><th>Nilai Siswa</th><th>Aksi</th></tr></thead>
-      <tbody>${data.map((r,i) => `
-        <tr class="${i===0 && data.length === allRankingData.length ? 'top-1' : ''}">
-          <td class="rank-num">${i+1}</td>
+      <tbody>${data.map((r) => `
+        <tr class="${r.originalRank === 1 ? 'top-1' : ''}">
+          <!-- INI BAGIAN YANG DIUBAH: Pakai r.originalRank agar nomor aslinya tetap -->
+          <td class="rank-num">${r.originalRank}</td>
           <td><a href="detail.html?kode=${encodeURIComponent(r.kode)}">${esc(r.kode)}</a></td>
           <td><b>${esc(r.judul)}</b></td>
           <td>${esc(r.participants?.nama||'—')}</td>
@@ -106,7 +107,6 @@ function renderTable(data) {
 
   const { data: posters } = await sb.from('posters').select('id,kode,judul,image_url,participants(nama,kelas)').eq('status','published');
   
-  // KODE ASLI TANPA LIMIT
   const { data: assessments } = await sb.from('assessments').select(`
     poster_id, nilai, reviewer_type, reviewer_name, reviewer_kelas, kritik_saran,
     profiles:judge_id(full_name)
@@ -135,25 +135,25 @@ function renderTable(data) {
 
   if (!rows.length) { document.getElementById('content').innerHTML = '<div class="empty">Belum ada penilaian.</div>'; return; }
   
-  allRankingData = rows;
+  // Simpan peringkat asli SEBELUM difilter
+  allRankingData = rows.map((r, index) => ({ ...r, originalRank: index + 1 }));
+  
+  // Tampilkan semua data pertama kali
   renderTable(allRankingData);
 
-  // FITUR PENCARIAN
+  // Logika Pencarian
   document.getElementById('searchInput').addEventListener('input', (e) => {
     const query = e.target.value.toLowerCase();
-    
     const filtered = allRankingData.filter(r => {
       const nama = (r.participants?.nama || '').toLowerCase();
       const kelas = (r.participants?.kelas || '').toLowerCase();
       const judul = (r.judul || '').toLowerCase();
       const kode = (r.kode || '').toLowerCase();
-      
       return nama.includes(query) || kelas.includes(query) || judul.includes(query) || kode.includes(query);
     });
-    
     renderTable(filtered);
   });
 })();
 </script>
 </body>
-    </html>
+</html>
